@@ -9,6 +9,7 @@ import inline from './commands/inline.ts';
 import singleLetter from './commands/single-letter.ts';
 import typeLookup from './commands/type-lookup.ts';
 import { helpText, parseFlags } from './lib/args.ts';
+import { detectLang } from './lib/detect-lang.ts';
 import { resolveGoFiles } from './lib/go-project.ts';
 import { eachProject, resolveTsConfigs } from './lib/project.ts';
 import type { Command, FlagSpec } from './lib/types.ts';
@@ -86,6 +87,8 @@ function run(): void {
         console.error(`${command.name}: no tsconfig/directory given\n\n${helpText(command)}`);
         process.exit(1);
     }
+
+    if (options.lang === undefined) options.lang = detectLang(paths);
 
     // Go has no tsconfig/type graph, so it bypasses ts-morph/eachProject entirely — a command that
     // supports it exposes a createGo() factory taking a file path instead of a ts-morph sourceFile

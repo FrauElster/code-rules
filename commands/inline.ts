@@ -134,8 +134,9 @@ Output:
 A hit is a place to look, not a verdict — independently testable, or genuinely
 naming something, is a reason to keep a binding top-level.
 
-  --lang=ts  default. Path is a tsconfig/dir, scanned via ts-morph — reference
-             counts come from the real symbol graph.
+  --lang=ts  default, auto-detected from the path (a go.mod makes it go). Path
+             is a tsconfig/dir, scanned via ts-morph — reference counts come
+             from the real symbol graph.
   --lang=go  path is a dir walked for *.go (or an individual .go file); no
              tsconfig, no type graph. Runs go-analyzer/main.go (go/ast, stdlib
              only) as a subprocess via \`go run\` — needs the go toolchain on

@@ -18,8 +18,7 @@ export const LANG_FLAG: FlagSpec = {
     key: 'lang',
     kind: 'enum',
     values: ['ts', 'go'],
-    default: 'ts',
-    desc: 'which project graph to scan: TypeScript (ts-morph, needs a tsconfig/dir) or Go (needs a dir/*.go, no type graph)',
+    desc: 'which project graph to scan: TypeScript (ts-morph, needs a tsconfig/dir) or Go (needs a dir/*.go, no type graph). Default: auto-detected from the path (go.mod → go, else ts)',
 };
 
 // a flag spec is { flag, key, kind: 'boolean'|'number'|'enum'|'list', values?, default?, desc }

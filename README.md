@@ -29,7 +29,7 @@ Static-analysis CLI that flags inlinable functions/consts, multi-line comments, 
     node cli.ts all ./tsconfig.json
     node cli.ts explicit-import ./tsconfig.json --fix
 
-`node cli.ts --help` lists commands; `node cli.ts <command> --help` gives that command's flags.
+`--lang` auto-detects from the path (`go.mod` → go, else ts) unless passed explicitly. `node cli.ts --help` lists commands; `node cli.ts <command> --help` gives that command's flags.
 
 ## Recommended prompt
 

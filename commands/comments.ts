@@ -75,7 +75,8 @@ only for unexpected/non-obvious behaviour ... hard cap ~1 line" rule.
                        is your own in-flight work, not a codebase audit
   --scope=all          every multi-line comment, ignoring git state entirely
                        (no git calls are made)
-  --lang=ts            default. Path is a tsconfig/dir, scanned via ts-morph.
+  --lang=ts            default, auto-detected from the path (a go.mod makes
+                       it go). Path is a tsconfig/dir, scanned via ts-morph.
   --lang=go            path is a dir walked for *.go (or an individual .go file);
                        no type graph, no tsconfig — vendor/, node_modules/, .git/
                        and generated files ("// Code generated ... DO NOT EDIT.")
