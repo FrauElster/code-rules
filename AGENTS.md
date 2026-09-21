@@ -11,9 +11,10 @@ the tool is built and the style it holds itself to.
 
 ## How it works, at a high level
 
-- `cli.ts` is the entry point. It registers five checks (`inline`,
-  `comments`, `casts`, `type-lookup`, `explicit-import`) plus a synthetic
-  `all` command that runs all five over one shared project graph.
+- `cli.ts` is the entry point. It registers six checks (`inline`,
+  `comments`, `casts`, `type-lookup`, `explicit-import`, `single-letter`)
+  plus a synthetic `all` command that runs all six over one shared project
+  graph.
 - Each command lives in `commands/*.ts` and exports a `Command` (see
   `lib/types.ts`): a name, flag specs, help text, and a `create(options)`
   factory returning `{ visit, report }`. `visit` is called once per
@@ -44,6 +45,7 @@ Current capabilities (see `README.md` for flags and examples):
 | `casts` | redundant `as`/`<T>` assertions, `as any`, `as unknown as` |
 | `type-lookup` | `Car["engine"]` where the result has a name of its own |
 | `explicit-import` | named imports from barrel modules, with `--fix` |
+| `single-letter` | variables/parameters/catch bindings named with a single letter |
 
 ## Setup
 

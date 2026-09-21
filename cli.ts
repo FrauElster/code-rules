@@ -6,13 +6,14 @@ import casts from './commands/casts.ts';
 import comments from './commands/comments.ts';
 import explicitImport from './commands/explicit-import.ts';
 import inline from './commands/inline.ts';
+import singleLetter from './commands/single-letter.ts';
 import typeLookup from './commands/type-lookup.ts';
 import { helpText, parseFlags } from './lib/args.ts';
 import { resolveGoFiles } from './lib/go-project.ts';
 import { eachProject, resolveTsConfigs } from './lib/project.ts';
 import type { Command, FlagSpec } from './lib/types.ts';
 
-const COMMANDS: Command[] = [inline, comments, casts, typeLookup, explicitImport];
+const COMMANDS: Command[] = [inline, comments, casts, typeLookup, explicitImport, singleLetter];
 
 // two commands may share a flag only by sharing the one spec object (SCOPE_FLAG) — same name, two specs would
 // silently give `all` one command's parsing for both

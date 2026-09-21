@@ -14,6 +14,7 @@ style rules over a TypeScript project graph. Formerly `find-inline-helpers`.
 | `casts` | type assertions the type already satisfies, `as any`, `as unknown as` |
 | `type-lookup` | `Car["engine"]` where the property's type has a name of its own |
 | `explicit-import` | named imports from barrel modules (`--fix`) |
+| `single-letter` | variables/parameters/catch bindings named with a single letter |
 | `all` | every check, over one shared project graph |
 
 `node cli.ts --help` lists the commands; `node cli.ts <command> --help` gives
@@ -218,6 +219,32 @@ per-specifier `{ type X }` are all preserved. Anything else is left in place for
 you to handle. Edits are applied to the file text directly, so re-run the
 project's `pnpm lint:fix` afterwards if you want biome to re-sort the block.
 
+## `single-letter`
+
+    [--scope=uncommitted|all] [--kind=all|variable|parameter|catch] [--allow=<name>]
+
+Every `let`/`const`/`var` declaration, function/method/arrow parameter, or
+`catch` binding whose name is a single character.
+
+    function f(e) {         // parameter e
+        try {
+            const r = g(e);  // variable r
+        } catch (e) {        // catch e
+            ...
+        }
+    }
+
+- `--kind` narrows to one binding form; `catch` is reported separately from
+  `variable` even though a catch binding is a `VariableDeclaration` in the AST
+  — otherwise every caught error would show up twice.
+- `--allow=<name>` is repeatable and exempts a specific name everywhere in the
+  scan (`--allow=_ --allow=i` for an accepted loop counter). It defaults to
+  `['_']`, since `_` for a deliberately-ignored binding is a near-universal
+  convention, not a naming failure.
+- `--scope` behaves as in `comments`/`casts`: `uncommitted` (default) checks
+  only lines added/modified since `HEAD`, `all` audits the whole project.
+- No `--lang=go` — see [General notes](#general-notes).
+
 ## General notes
 
 - Go support (`inline`, `comments`, both via `--lang=go`) is deliberately partial.
@@ -227,9 +254,11 @@ project's `pnpm lint:fix` afterwards if you want biome to re-sort the block.
   indexed-access types don't map onto the same rule. `explicit-import`'s
   barrel-module problem (a named import forcing tsc to resolve everything a
   re-export barrel touches) doesn't exist in Go's compilation model at all.
-  Porting any of these would mean inventing a new, Go-specific rule rather than
-  checking the same one — ask if that's wanted (a "redundant type conversion"
-  check would be the closest analogue to `casts`).
+  `single-letter` is a naming convention, not a type-system check, so a Go
+  port is plausible (`gofmt`/`golint` already flag some of this) but isn't
+  built here. Porting any of these would mean inventing a new, Go-specific
+  rule rather than checking the same one — ask if that's wanted (a "redundant
+  type conversion" check would be the closest analogue to `casts`).
 
 - One ts-morph `Project` per tsconfig — workspaces consume each other's built
   `.d.ts`, not source, so a symbol's references never span two tsconfigs.
