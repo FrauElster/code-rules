@@ -1,0 +1,77 @@
+{
+    "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+    "assist": {
+        "actions": {
+            "source": {
+                "organizeImports": "on",
+                "noDuplicateClasses": "on"
+            }
+        }
+    },
+    "linter": {
+        "rules": {
+            "complexity": {
+                "noUselessStringConcat": "error",
+                "noUselessUndefinedInitialization": "error",
+                "useDateNow": "error",
+                "noBannedTypes": "off",
+                "useSimplifiedLogicExpression": "off"
+            },
+            "correctness": {
+                "noUnreachable": "off",
+                "noUnusedImports": "error",
+                "noUnusedFunctionParameters": "error",
+                "noUnusedVariables": {
+                    "level": "warn",
+                    "fix": "unsafe"
+                }
+            },
+            "nursery": {
+                "noFloatingPromises": "error"
+            },
+            "performance": {
+                "noDelete": "off"
+            },
+            "style": {
+                "useImportType": "error",
+                "noNonNullAssertion": "off",
+                "noParameterAssign": "off"
+            },
+            "suspicious": {
+                "noExplicitAny": "off",
+                "noTsIgnore": "error",
+                "noShadow": "off"
+            }
+        }
+    },
+    "javascript": {
+        "formatter": {
+            "quoteStyle": "single",
+            "semicolons": "always",
+            "trailingCommas": "all",
+            "lineWidth": 200,
+            "arrowParentheses": "asNeeded",
+            "bracketSameLine": true
+        }
+    },
+    "json": {
+        "formatter": {
+            "lineWidth": 320
+        }
+    },
+    "formatter": {
+        "enabled": true,
+        "indentStyle": "space",
+        "indentWidth": 4,
+        "trailingNewline": true
+    },
+    "files": {
+        "ignoreUnknown": true,
+        "includes": ["**", "!go-analyzer"]
+    },
+    "vcs": {
+        "enabled": true,
+        "clientKind": "git",
+        "useIgnoreFile": true
+    }
+}

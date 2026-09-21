@@ -1,21 +1,25 @@
-import { extname } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { ts } from 'ts-morph';
-import { SCOPE_FLAG } from '../lib/args.js';
-import { addedLines } from '../lib/git.js';
-import { goCommentBlocks } from '../lib/go-comments.js';
+import { extname } from 'node:path';
+import { type SourceFile, ts } from 'ts-morph';
+import { LANG_FLAG, SCOPE_FLAG } from '../lib/args.ts';
+import { addedLines } from '../lib/git.ts';
+import { goCommentBlocks } from '../lib/go-comments.ts';
+import type { Command, Options } from '../lib/types.ts';
 
-const LANG_FLAG = { flag: '--lang=ts|go', key: 'lang', kind: 'enum', values: ['ts', 'go'], default: 'ts', desc: 'which project graph to scan: TypeScript (ts-morph, needs a tsconfig/dir) or Go (needs a dir/*.go, no type graph)' };
+interface TsCommentBlock {
+    pos: number;
+    end: number;
+}
 
 // groups `//` lines that are truly adjacent (consecutive source lines, nothing but trivia between them) into one
 // logical comment, since that's what the "hard cap ~1 line" comment-style rule treats as a single unit; a blank
 // line between two `//` comments makes them two separate comments, not one. `/* */` is always one unit.
-function commentBlocks(sourceFile, isJsx) {
+function commentBlocks(sourceFile: SourceFile, isJsx: boolean): TsCommentBlock[] {
     const fullText = sourceFile.getFullText();
-    const lineAt = pos => sourceFile.getLineAndColumnAtPos(pos).line;
+    const lineAt = (pos: number) => sourceFile.getLineAndColumnAtPos(pos).line;
     const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, isJsx ? ts.LanguageVariant.JSX : ts.LanguageVariant.Standard, fullText);
-    const blocks = [];
-    let currentLineBlock = null;
+    const blocks: TsCommentBlock[] = [];
+    let currentLineBlock: TsCommentBlock | null = null;
     let currentLineBlockEndLine = -1;
     let codeSincePrevComment = true;
     let kind = scanner.scan();
@@ -44,14 +48,20 @@ function commentBlocks(sourceFile, isJsx) {
     return blocks;
 }
 
-function reportBlocks(results, checkAll) {
+interface CommentResult {
+    file: string;
+    startLine: number;
+    endLine: number;
+}
+
+function reportBlocks(results: CommentResult[], checkAll: boolean): void {
     results.sort((a, b) => a.file.localeCompare(b.file) || a.startLine - b.startLine);
     console.log(`multi-line comments in ${checkAll ? 'the whole project' : 'uncommitted lines'}:`);
     for (const r of results) console.log(`${r.file}:${r.startLine}-${r.endLine}  (${r.endLine - r.startLine + 1}l comment)`);
     console.log(`\n${results.length} candidate(s)`);
 }
 
-export default {
+const comments: Command = {
     name: 'comments',
     summary: 'multi-line comments (hard cap ~1 line rule)',
     flags: [SCOPE_FLAG, LANG_FLAG],
@@ -76,32 +86,34 @@ Output:
 
 JSDoc-style API docs on an exported symbol are a legitimate reason to keep one.`,
 
-    // used by cli.js's Go path (bypasses ts-morph/eachProject entirely — see resolveGoFiles)
-    createGo(options) {
-        const results = [];
+    // used by cli.ts's Go path (bypasses ts-morph/eachProject entirely — see resolveGoFiles)
+    createGo(options: Options) {
+        const results: CommentResult[] = [];
         const checkAll = options.scope === 'all';
         return {
-            visit(filePath) {
-                const text = readFileSync(filePath, 'utf8');
-                const blocks = goCommentBlocks(text);
-                if (blocks.length === 0) return;
+            visit(filePaths: string[]) {
+                for (const filePath of filePaths) {
+                    const text = readFileSync(filePath, 'utf8');
+                    const blocks = goCommentBlocks(text);
+                    if (blocks.length === 0) continue;
 
-                const added = checkAll ? null : addedLines(filePath);
-                if (!checkAll && (added === null || added.size === 0)) return;
+                    const added = checkAll ? null : addedLines(filePath);
+                    if (!checkAll && (added === null || added.size === 0)) continue;
 
-                for (const b of blocks) {
-                    if (b.endLine <= b.startLine) continue;
-                    if (!checkAll) {
-                        let overlapsAdded = false;
-                        for (let l = b.startLine; l <= b.endLine; l++) {
-                            if (added.has(l)) {
-                                overlapsAdded = true;
-                                break;
+                    for (const b of blocks) {
+                        if (b.endLine <= b.startLine) continue;
+                        if (!checkAll) {
+                            let overlapsAdded = false;
+                            for (let l = b.startLine; l <= b.endLine; l++) {
+                                if (added?.has(l)) {
+                                    overlapsAdded = true;
+                                    break;
+                                }
                             }
+                            if (!overlapsAdded) continue;
                         }
-                        if (!overlapsAdded) continue;
+                        results.push({ file: filePath, startLine: b.startLine, endLine: b.endLine });
                     }
-                    results.push({ file: filePath, startLine: b.startLine, endLine: b.endLine });
                 }
             },
             report() {
@@ -110,8 +122,8 @@ JSDoc-style API docs on an exported symbol are a legitimate reason to keep one.`
         };
     },
 
-    create(options) {
-        const results = [];
+    create(options: Options) {
+        const results: CommentResult[] = [];
         const checkAll = options.scope === 'all';
         return {
             visit({ sourceFiles }) {
@@ -131,7 +143,7 @@ JSDoc-style API docs on an exported symbol are a legitimate reason to keep one.`
                         if (!checkAll) {
                             let overlapsAdded = false;
                             for (let l = startLine; l <= endLine; l++) {
-                                if (added.has(l)) {
+                                if (added?.has(l)) {
                                     overlapsAdded = true;
                                     break;
                                 }
@@ -148,3 +160,5 @@ JSDoc-style API docs on an exported symbol are a legitimate reason to keep one.`
         };
     },
 };
+
+export default comments;

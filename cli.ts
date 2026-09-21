@@ -1,18 +1,33 @@
 #!/usr/bin/env node
 // local-only style-rule checks for lumaric-erp's AGENTS.md — see README.md
-// usage: node cli.js <command> <tsconfig.json|dir> [...] [flags]   (`--help` anywhere)
+// usage: node cli.ts <command> <tsconfig.json|dir> [...] [flags]   (`--help` anywhere)
 
-import { parseFlags, helpText } from './lib/args.js';
-import { resolveTsConfigs, eachProject } from './lib/project.js';
-import { resolveGoFiles } from './lib/go-project.js';
-import inline from './commands/inline.js';
-import comments from './commands/comments.js';
-import explicitImport from './commands/explicit-import.js';
-import casts from './commands/casts.js';
-import typeLookup from './commands/type-lookup.js';
+import casts from './commands/casts.ts';
+import comments from './commands/comments.ts';
+import explicitImport from './commands/explicit-import.ts';
+import inline from './commands/inline.ts';
+import typeLookup from './commands/type-lookup.ts';
+import { helpText, parseFlags } from './lib/args.ts';
+import { resolveGoFiles } from './lib/go-project.ts';
+import { eachProject, resolveTsConfigs } from './lib/project.ts';
+import type { Command, FlagSpec } from './lib/types.ts';
 
-const COMMANDS = [inline, comments, casts, typeLookup, explicitImport];
-const ALL = {
+const COMMANDS: Command[] = [inline, comments, casts, typeLookup, explicitImport];
+
+// two commands may share a flag only by sharing the one spec object (SCOPE_FLAG) — same name, two specs would
+// silently give `all` one command's parsing for both
+function sharedFlags(): FlagSpec[] {
+    const flags = [...new Set(COMMANDS.flatMap(c => c.flags))];
+    const byName = new Map<string, FlagSpec>();
+    for (const f of flags) {
+        const name = f.flag.split('=')[0]!;
+        if (byName.has(name)) throw new Error(`duplicate flag ${name} across commands`);
+        byName.set(name, f);
+    }
+    return flags;
+}
+
+const ALL: Command = {
     name: 'all',
     summary: 'run every check over one shared project graph',
     flags: sharedFlags(),
@@ -25,26 +40,13 @@ Takes the union of the subcommands' flags; each one means what it means there.`,
     members: COMMANDS,
 };
 
-// two commands may share a flag only by sharing the one spec object (SCOPE_FLAG) — same name, two specs would
-// silently give `all` one command's parsing for both
-function sharedFlags() {
-    const flags = [...new Set(COMMANDS.flatMap(c => c.flags))];
-    const byName = new Map();
-    for (const f of flags) {
-        const name = f.flag.split('=')[0];
-        if (byName.has(name)) throw new Error(`duplicate flag ${name} across commands`);
-        byName.set(name, f);
-    }
-    return flags;
-}
-
-function usage() {
+function usage(): string {
     const commands = [...COMMANDS, ALL];
     const width = Math.max(...commands.map(c => c.name.length));
     return [
         'code-rules — local-only checks for lumaric-erp AGENTS.md style rules',
         '',
-        'usage: node cli.js <command> <tsconfig.json|dir> [...] [flags]',
+        'usage: node cli.ts <command> <tsconfig.json|dir> [...] [flags]',
         '',
         'commands:',
         ...commands.map(c => `  ${c.name.padEnd(width)}  ${c.summary}`),
@@ -53,11 +55,11 @@ function usage() {
         'plugins/tsconfig.backend.json, plugins/tsconfig.ui.json, cli/tsconfig.json) or a',
         'directory, walked for project tsconfigs — solution-style ones are skipped.',
         '',
-        'node cli.js <command> --help  for that command\'s flags.',
+        "node cli.ts <command> --help  for that command's flags.",
     ].join('\n');
 }
 
-function run() {
+function run(): void {
     const argv = process.argv.slice(2);
     const commandName = argv[0];
     const command = [...COMMANDS, ALL].find(c => c.name === commandName);
@@ -71,12 +73,12 @@ function run() {
         process.exit(0);
     }
 
-    let paths;
-    let options;
+    let paths: string[];
+    let options: ReturnType<typeof parseFlags>['options'];
     try {
         ({ paths, options } = parseFlags(rest, command.flags));
     } catch (e) {
-        console.error(e.message);
+        console.error((e as Error).message);
         process.exit(1);
     }
     if (paths.length === 0) {
@@ -91,29 +93,29 @@ function run() {
             console.error(`${command.name}: --lang=go is not supported by this command`);
             process.exit(1);
         }
-        let goFiles;
+        let goFiles: string[];
         try {
             goFiles = resolveGoFiles(paths);
         } catch (e) {
-            console.error(e.message);
+            console.error((e as Error).message);
             process.exit(1);
         }
         const goRun = command.createGo(options);
-        for (const filePath of goFiles) goRun.visit(filePath);
+        goRun.visit(goFiles);
         goRun.report();
         return;
     }
 
-    let tsConfigFilePaths;
+    let tsConfigFilePaths: string[];
     try {
         tsConfigFilePaths = resolveTsConfigs(paths);
     } catch (e) {
-        console.error(e.message);
+        console.error((e as Error).message);
         process.exit(1);
     }
 
     const members = command.members ?? [command];
-    const runs = members.map(c => ({ name: c.name, run: c.create(options) }));
+    const runs = members.map(c => ({ name: c.name, run: c.create!(options) }));
 
     for (const ctx of eachProject(tsConfigFilePaths)) {
         for (const r of runs) r.run.visit(ctx);

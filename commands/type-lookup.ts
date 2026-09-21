@@ -1,18 +1,34 @@
-import { SyntaxKind, ts } from 'ts-morph';
-import { SCOPE_FLAG } from '../lib/args.js';
-import { addedLines } from '../lib/git.js';
+import { type Node, SyntaxKind, ts } from 'ts-morph';
+import { SCOPE_FLAG } from '../lib/args.ts';
+import { addedLines } from '../lib/git.ts';
+import type { Command, Options } from '../lib/types.ts';
 
-const WRITABLE_INTRINSIC = ts.TypeFlags.String | ts.TypeFlags.Number | ts.TypeFlags.Boolean | ts.TypeFlags.BigInt | ts.TypeFlags.ESSymbol | ts.TypeFlags.Void | ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Never;
+const WRITABLE_INTRINSIC =
+    ts.TypeFlags.String |
+    ts.TypeFlags.Number |
+    ts.TypeFlags.Boolean |
+    ts.TypeFlags.BigInt |
+    ts.TypeFlags.ESSymbol |
+    ts.TypeFlags.Void |
+    ts.TypeFlags.Null |
+    ts.TypeFlags.Undefined |
+    ts.TypeFlags.Never;
 
-const NAMED_DECLARATION_KINDS = new Set([SyntaxKind.TypeAliasDeclaration, SyntaxKind.InterfaceDeclaration, SyntaxKind.ClassDeclaration, SyntaxKind.EnumDeclaration]);
+const NAMED_DECLARATION_KINDS = new Set([ts.SyntaxKind.TypeAliasDeclaration, ts.SyntaxKind.InterfaceDeclaration, ts.SyntaxKind.ClassDeclaration, ts.SyntaxKind.EnumDeclaration]);
 
-function namedSymbol(checker, type, node) {
+// a generic instantiation (`Foo[]`, symbol `Array`) carries its own type arguments — `TypeReference` is
+// the compiler's node for one, so a plain `Type` reaching this point never has this shape by accident
+function isGenericInstantiation(type: ts.Type): boolean {
+    return (type.flags & ts.TypeFlags.Object) !== 0 && ((type as ts.ObjectType).objectFlags & ts.ObjectFlags.Reference) !== 0 && (type as ts.TypeReference).typeArguments !== undefined;
+}
+
+function namedSymbol(checker: ts.TypeChecker, type: ts.Type, node: Node): ts.Symbol | null {
     const symbol = type.aliasSymbol ?? type.symbol;
     if (!symbol || symbol.name.startsWith('__')) return null;
     const declarations = (symbol.declarations ?? []).filter(d => NAMED_DECLARATION_KINDS.has(d.kind));
     if (declarations.length === 0) return null;
     // a generic instantiation needs its type arguments back (`Foo[]` has symbol `Array`), so the bare name isn't it
-    if (type.aliasTypeArguments?.length || type.typeArguments?.length) return null;
+    if (type.aliasTypeArguments?.length || isGenericInstantiation(type)) return null;
     if (checker.typeToString(type) !== symbol.name) return null;
     // the alias's own right-hand side — `type SearchPath = paths[keyof paths]` would be substituted with itself
     if (declarations.some(d => d.getSourceFile() === node.compilerNode.getSourceFile() && d.pos <= node.compilerNode.pos && node.compilerNode.end <= d.end)) return null;
@@ -20,8 +36,8 @@ function namedSymbol(checker, type, node) {
 }
 
 // does writing the bare name at this position mean the same thing — i.e. is the symbol in scope and unshadowed?
-function inScope(checker, node, symbol) {
-    let resolved;
+function inScope(checker: ts.TypeChecker, node: Node, symbol: ts.Symbol): boolean {
+    let resolved: ts.Symbol | undefined;
     try {
         resolved = checker.resolveName(symbol.name, node.compilerNode, ts.SymbolFlags.Type, false);
     } catch {
@@ -33,12 +49,21 @@ function inScope(checker, node, symbol) {
     return aliased === symbol;
 }
 
-function declaringFile(symbol) {
+function declaringFile(symbol: ts.Symbol): string | null {
     const declaration = (symbol.declarations ?? []).find(d => NAMED_DECLARATION_KINDS.has(d.kind));
     return declaration ? declaration.getSourceFile().fileName : null;
 }
 
-export default {
+interface LookupResult {
+    file: string;
+    line: number;
+    kind: 'named' | 'builtin';
+    from: string;
+    name: string;
+    note: string;
+}
+
+const typeLookup: Command = {
     name: 'type-lookup',
     summary: 'indexed-access types (`Car["engine"]`) that resolve to a type you could name directly',
     flags: [
@@ -71,8 +96,8 @@ A hit is a candidate, not a verdict: a lookup is deliberate when the point is
 to *track* the other type — a signature that should follow \`Car\` if its
 property type changes later is a reason to keep it.`,
 
-    create(options) {
-        const results = [];
+    create(options: Options) {
+        const results: LookupResult[] = [];
         const checkAll = options.scope === 'all';
         return {
             visit({ project, sourceFiles }) {
@@ -87,9 +112,9 @@ property type changes later is a reason to keep it.`,
 
                     for (const node of nodes) {
                         const line = node.getStartLineNumber();
-                        if (!checkAll && !added.has(line)) continue;
+                        if (!checkAll && !added?.has(line)) continue;
 
-                        let type;
+                        let type: ts.Type;
                         try {
                             type = checker.getTypeFromTypeNode(node.compilerNode);
                         } catch {
@@ -98,8 +123,8 @@ property type changes later is a reason to keep it.`,
                         if (type.flags & (ts.TypeFlags.IndexedAccess | ts.TypeFlags.TypeParameter | ts.TypeFlags.Any | ts.TypeFlags.Unknown)) continue;
 
                         const symbol = namedSymbol(checker, type, node);
-                        let kind;
-                        let name;
+                        let kind: 'named' | 'builtin';
+                        let name: string;
                         let note = '';
                         if (symbol) {
                             kind = 'named';
@@ -127,3 +152,5 @@ property type changes later is a reason to keep it.`,
         };
     },
 };
+
+export default typeLookup;

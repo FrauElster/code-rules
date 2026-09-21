@@ -1,20 +1,40 @@
+import type { Command, FlagSpec, Options } from './types.ts';
+
 // shared by every check that can narrow itself to in-flight work — one spec object so `all` gives the
 // subcommands the same value instead of two conflicting --scope defaults
-export const SCOPE_FLAG = { flag: '--scope=uncommitted|all', key: 'scope', kind: 'enum', values: ['uncommitted', 'all'], default: 'uncommitted', desc: 'which lines to check: those added/modified since HEAD, or everything' };
+export const SCOPE_FLAG: FlagSpec = {
+    flag: '--scope=uncommitted|all',
+    key: 'scope',
+    kind: 'enum',
+    values: ['uncommitted', 'all'],
+    default: 'uncommitted',
+    desc: 'which lines to check: those added/modified since HEAD, or everything',
+};
+
+// shared by every check with a Go-side implementation — one spec object so `all` doesn't see two
+// conflicting --lang specs (see lib/args.ts's sharedFlags duplicate-name check in cli.ts)
+export const LANG_FLAG: FlagSpec = {
+    flag: '--lang=ts|go',
+    key: 'lang',
+    kind: 'enum',
+    values: ['ts', 'go'],
+    default: 'ts',
+    desc: 'which project graph to scan: TypeScript (ts-morph, needs a tsconfig/dir) or Go (needs a dir/*.go, no type graph)',
+};
 
 // a flag spec is { flag, key, kind: 'boolean'|'number'|'enum'|'list', values?, default?, desc }
 // `flag` is the display form ('--max-lines=N'); everything before the '=' is the matched name.
 
-function flagName(spec) {
-    return spec.flag.split('=')[0];
+function flagName(spec: FlagSpec): string {
+    return spec.flag.split('=')[0]!;
 }
 
-export function parseFlags(argv, specs) {
+export function parseFlags(argv: string[], specs: FlagSpec[]): { paths: string[]; options: Options } {
     const byName = new Map(specs.map(s => [flagName(s), s]));
-    const options = {};
-    for (const s of specs) options[s.key] = s.kind === 'list' ? [...(s.default ?? [])] : s.default;
+    const options: Options = {};
+    for (const s of specs) options[s.key] = s.kind === 'list' ? [...((s.default as string[] | undefined) ?? [])] : s.default;
 
-    const paths = [];
+    const paths: string[] = [];
     for (const arg of argv) {
         if (!arg.startsWith('--')) {
             paths.push(arg);
@@ -35,18 +55,18 @@ export function parseFlags(argv, specs) {
                 if (!Number.isFinite(n)) throw new Error(`${name} needs a number, got '${raw}'`);
                 options[spec.key] = n;
             } else if (spec.kind === 'enum') {
-                if (!spec.values.includes(raw)) throw new Error(`${name} must be one of ${spec.values.join('|')}, got '${raw}'`);
+                if (!spec.values?.includes(raw)) throw new Error(`${name} must be one of ${spec.values?.join('|')}, got '${raw}'`);
                 options[spec.key] = raw;
             } else {
-                options[spec.key].push(raw);
+                (options[spec.key] as string[]).push(raw);
             }
         }
     }
     return { paths, options };
 }
 
-export function helpText(command) {
-    const lines = [`${command.name} — ${command.summary}`, '', `usage: node cli.js ${command.name} <tsconfig.json|dir> [...] ${command.flags.map(f => `[${f.flag}]`).join(' ')}`];
+export function helpText(command: Command): string {
+    const lines = [`${command.name} — ${command.summary}`, '', `usage: node cli.ts ${command.name} <tsconfig.json|dir> [...] ${command.flags.map(f => `[${f.flag}]`).join(' ')}`];
     if (command.flags.length > 0) {
         lines.push('', 'flags:');
         const width = Math.max(...command.flags.map(f => f.flag.length));

@@ -1,29 +1,60 @@
 import { writeFileSync } from 'node:fs';
-import { ts } from 'ts-morph';
+import { type Project, ts } from 'ts-morph';
+import type { Command, Options } from '../lib/types.ts';
 
 // packages whose subpath modules are barrels: a named import from one makes tsc resolve every module
 // the barrel re-exports, not just the one used. Deep-importing the single module avoids that.
 const BUILTIN_BARRELS = ['@heroicons/react/*'];
 
 // `*` spans '/' — '@heroicons/react/*' is meant to cover '@heroicons/react/24/outline'
-function globToRegExp(glob) {
-    return new RegExp(`^${glob.split('*').map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`);
+function globToRegExp(glob: string): RegExp {
+    return new RegExp(
+        `^${glob
+            .split('*')
+            .map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+            .join('.*')}$`,
+    );
 }
 
-function resolveDeep(deep, containingFile, project, host) {
+function resolveDeep(deep: string, containingFile: string, project: Project, host: ts.ModuleResolutionHost): string | null {
     const { resolvedModule } = ts.resolveModuleName(deep, containingFile, project.getCompilerOptions(), host);
     return resolvedModule?.resolvedFileName ?? null;
 }
 
-function hasDefaultExport(project, filePath, cache) {
-    if (cache.has(filePath)) return cache.get(filePath);
+function hasDefaultExport(project: Project, filePath: string, cache: Map<string, boolean>): boolean {
+    if (cache.has(filePath)) return cache.get(filePath)!;
     const sf = project.addSourceFileAtPathIfExists(filePath);
     const has = sf !== undefined && sf.getDefaultExportSymbol() !== undefined;
     cache.set(filePath, has);
     return has;
 }
 
-export default {
+interface Rewrite {
+    deep: string;
+    text: string;
+}
+
+interface Blocked {
+    name: string;
+    reason: string;
+}
+
+interface Hit {
+    file: string;
+    line: number;
+    moduleSpecifier: string;
+    count: number;
+    rewrites: Rewrite[];
+    blocked: Blocked[];
+    fixable: boolean;
+}
+
+interface FileEdit {
+    text: string;
+    list: { start: number; end: number; replacement: string }[];
+}
+
+const explicitImport: Command = {
     name: 'explicit-import',
     summary: 'named imports from barrel modules (deep-import instead)',
     flags: [
@@ -53,12 +84,12 @@ export. A specifier that fails either check is reported, never rewritten.
 and it carries no default/namespace import; the emitted lines are sorted
 alphabetically by module specifier. Anything else is left for you.`,
 
-    create(options) {
-        const patterns = (options.noBuiltins ? [] : BUILTIN_BARRELS).concat(options.barrels);
+    create(options: Options) {
+        const patterns = (options.noBuiltins ? [] : BUILTIN_BARRELS).concat(options.barrels as string[]);
         const matchers = patterns.map(globToRegExp);
-        const hits = [];
-        const edits = new Map(); // file -> { text, edits: [{ start, end, replacement }] }
-        const defaultExportCache = new Map();
+        const hits: Hit[] = [];
+        const edits = new Map<string, FileEdit>(); // file -> { text, edits: [{ start, end, replacement }] }
+        const defaultExportCache = new Map<string, boolean>();
 
         return {
             visit({ project, sourceFiles }) {
@@ -75,8 +106,8 @@ alphabetically by module specifier. Anything else is left for you.`,
 
                         const declTypeOnly = decl.isTypeOnly();
                         const quote = decl.getModuleSpecifier().getText()[0];
-                        const rewrites = [];
-                        const blocked = [];
+                        const rewrites: Rewrite[] = [];
+                        const blocked: Blocked[] = [];
                         for (const spec of named) {
                             const exportName = spec.getName();
                             const local = spec.getAliasNode()?.getText() ?? exportName;
@@ -103,7 +134,7 @@ alphabetically by module specifier. Anything else is left for you.`,
 
                         if (options.fix && fixable) {
                             if (!edits.has(filePath)) edits.set(filePath, { text: sourceFile.getFullText(), list: [] });
-                            edits.get(filePath).list.push({ start: decl.getStart(), end: decl.getEnd(), replacement: rewrites.map(r => r.text).join('\n') });
+                            edits.get(filePath)!.list.push({ start: decl.getStart(), end: decl.getEnd(), replacement: rewrites.map(r => r.text).join('\n') });
                         }
                     }
                 }
@@ -136,3 +167,5 @@ alphabetically by module specifier. Anything else is left for you.`,
         };
     },
 };
+
+export default explicitImport;

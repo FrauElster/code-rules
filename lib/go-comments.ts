@@ -1,12 +1,17 @@
+export interface CommentBlock {
+    startLine: number;
+    endLine: number;
+}
+
 // hand-rolled Go lexer, just enough to find comments without misreading `//`/`/*` sequences that occur
-// inside string/rune/raw-string literals. Mirrors commands/comments.js's TS scanner logic: adjacent `//`
+// inside string/rune/raw-string literals. Mirrors commands/comments.ts's TS scanner logic: adjacent `//`
 // lines with no code between them merge into one logical block; `/* */` is always one block.
-export function goCommentBlocks(text) {
+export function goCommentBlocks(text: string): CommentBlock[] {
     const n = text.length;
     let i = 0;
     let line = 1;
-    const blocks = [];
-    let currentLineBlock = null;
+    const blocks: CommentBlock[] = [];
+    let currentLineBlock: CommentBlock | null = null;
     let currentLineBlockEndLine = -1;
     let codeSincePrevComment = true;
 

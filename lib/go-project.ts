@@ -1,16 +1,16 @@
-import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
-import { join, extname } from 'node:path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { extname, join } from 'node:path';
 
 const EXCLUDE_DIR_NAMES = new Set(['node_modules', '.git', 'vendor']);
 
 // go generate / protoc / mockgen etc. all emit this exact header line near the top of the file —
 // never hand-written, so never worth a style check
-function isGeneratedGoFile(text) {
+function isGeneratedGoFile(text: string): boolean {
     return /^\/\/ Code generated .* DO NOT EDIT\.$/m.test(text.slice(0, 500));
 }
 
-function findGoFilesRecursive(dir) {
-    const found = [];
+function findGoFilesRecursive(dir: string): string[] {
+    const found: string[] = [];
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
         if (entry.name.startsWith('.') && entry.name !== '.') continue;
         const fullPath = join(dir, entry.name);
@@ -25,8 +25,8 @@ function findGoFilesRecursive(dir) {
 }
 
 // paths are directories (walked recursively for *.go, skipping node_modules/.git/vendor) or individual .go files
-export function resolveGoFiles(paths) {
-    const resolved = [];
+export function resolveGoFiles(paths: string[]): string[] {
+    const resolved: string[] = [];
     for (const path of paths) {
         if (!existsSync(path)) throw new Error(`path not found: ${path}`);
         if (statSync(path).isDirectory()) {

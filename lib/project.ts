@@ -1,19 +1,20 @@
-import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { Project, ts } from 'ts-morph';
+import type { ProjectContext } from './types.ts';
 
 const EXCLUDE_PATH_PARTS = ['/node_modules/', '/.types/', '/dist/', '/schema/', 'plugin-map.ts', '.generated.', '.test.', '.spec.', '.d.ts'];
 const EXCLUDE_DIR_NAMES = new Set(['node_modules', '.types', 'dist', '.git']);
 
 // solution-style tsconfigs (bare `references`, `files: []`) aren't runnable projects — skip them
-function isProjectTsConfig(filePath) {
+function isProjectTsConfig(filePath: string): boolean {
     const { config } = ts.parseConfigFileTextToJson(filePath, readFileSync(filePath, 'utf8'));
     if (!config) return false;
     return (Array.isArray(config.include) && config.include.length > 0) || (Array.isArray(config.files) && config.files.length > 0);
 }
 
-function findTsConfigsRecursive(dir) {
-    const found = [];
+function findTsConfigsRecursive(dir: string): string[] {
+    const found: string[] = [];
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
         if (entry.name.startsWith('.') && entry.name !== '.') continue;
         const fullPath = join(dir, entry.name);
@@ -27,8 +28,8 @@ function findTsConfigsRecursive(dir) {
     return found;
 }
 
-export function resolveTsConfigs(paths) {
-    const resolved = [];
+export function resolveTsConfigs(paths: string[]): string[] {
+    const resolved: string[] = [];
     for (const path of paths) {
         if (!existsSync(path)) throw new Error(`path not found: ${path}`);
         if (statSync(path).isDirectory()) {
@@ -46,7 +47,7 @@ export function resolveTsConfigs(paths) {
 
 // one ts-morph Project per tsconfig — workspaces import each other's *built* d.ts, not source, so a
 // symbol never spans two tsconfigs; per-tsconfig reference search is the correct scope
-export function* eachProject(tsConfigFilePaths) {
+export function* eachProject(tsConfigFilePaths: string[]): Generator<ProjectContext> {
     for (const tsConfigFilePath of tsConfigFilePaths) {
         const project = new Project({ tsConfigFilePath, skipAddingFilesFromTsConfig: false });
         const sourceFiles = project.getSourceFiles().filter(sf => !EXCLUDE_PATH_PARTS.some(p => sf.getFilePath().includes(p)));

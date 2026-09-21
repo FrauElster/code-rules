@@ -1,43 +1,47 @@
-import { SyntaxKind, ts } from 'ts-morph';
-import { SCOPE_FLAG } from '../lib/args.js';
-import { addedLines } from '../lib/git.js';
+import { Node, SyntaxKind, ts } from 'ts-morph';
+import { SCOPE_FLAG } from '../lib/args.ts';
+import { addedLines } from '../lib/git.ts';
+import type { Command, Options } from '../lib/types.ts';
 
 const LITERAL_EXPRESSION_KINDS = [SyntaxKind.ObjectLiteralExpression, SyntaxKind.ArrayLiteralExpression];
 
-function unwrapParens(node) {
+function unwrapParens(node: Node): Node {
     let current = node;
-    while (current.getKind() === SyntaxKind.ParenthesizedExpression) current = current.getExpression();
+    while (Node.isParenthesizedExpression(current)) current = current.getExpression();
     return current;
 }
 
-function assertionParts(node) {
-    if (node.getKind() === SyntaxKind.AsExpression || node.getKind() === SyntaxKind.TypeAssertionExpression) {
-        return { expression: node.getExpression(), typeNode: node.getTypeNode() };
-    }
+function assertionParts(node: Node): { expression: Node; typeNode: Node | undefined } | null {
+    if (Node.isAsExpression(node) || Node.isTypeAssertion(node)) return { expression: node.getExpression(), typeNode: node.getTypeNode() };
     return null;
 }
 
 // `as const` is a literal-freshness directive, not a type assertion
-function isAsConst(typeNode) {
+function isAsConst(typeNode: Node): boolean {
     return typeNode.getKind() === SyntaxKind.TypeReference && typeNode.getText() === 'const';
 }
 
-function isKeyword(typeNode, kind) {
+function isKeyword(typeNode: Node, kind: SyntaxKind): boolean {
     return typeNode.getKind() === kind;
 }
 
-function classify(node, expression, typeNode, checker, options) {
+interface CastHit {
+    kind: 'identical' | 'widening' | 'any' | 'unknown-chain';
+    detail: string;
+}
+
+function classify(node: Node, expression: Node, typeNode: Node, checker: ts.TypeChecker, options: Options): CastHit | null {
     if (isKeyword(typeNode, SyntaxKind.AnyKeyword)) return { kind: 'any', detail: 'as any' };
 
     const inner = assertionParts(unwrapParens(expression));
-    if (inner && isKeyword(inner.typeNode, SyntaxKind.UnknownKeyword)) return { kind: 'unknown-chain', detail: `as unknown as ${typeNode.getText()}` };
+    if (inner?.typeNode && isKeyword(inner.typeNode, SyntaxKind.UnknownKeyword)) return { kind: 'unknown-chain', detail: `as unknown as ${typeNode.getText()}` };
     if (isKeyword(typeNode, SyntaxKind.UnknownKeyword)) return null; // the inner half of a chain, or a deliberate widen to unknown
 
     const expr = unwrapParens(expression);
     if (!options.includeLiterals && LITERAL_EXPRESSION_KINDS.includes(expr.getKind())) return null;
 
-    let sourceType;
-    let targetType;
+    let sourceType: ts.Type;
+    let targetType: ts.Type;
     try {
         sourceType = checker.getTypeAtLocation(expr.compilerNode);
         targetType = checker.getTypeAtLocation(typeNode.compilerNode);
@@ -53,12 +57,24 @@ function classify(node, expression, typeNode, checker, options) {
     return { kind: 'widening', detail: `${sourceText} as ${targetText}` };
 }
 
-export default {
+interface CastResult extends CastHit {
+    file: string;
+    line: number;
+}
+
+const casts: Command = {
     name: 'casts',
     summary: 'type assertions that the type already satisfies (plus `as any` / `as unknown as`)',
     flags: [
         SCOPE_FLAG,
-        { flag: '--cast-kind=all|identical|widening|any|unknown-chain', key: 'castKind', kind: 'enum', values: ['all', 'identical', 'widening', 'any', 'unknown-chain'], default: 'all', desc: 'which category to report' },
+        {
+            flag: '--cast-kind=all|identical|widening|any|unknown-chain',
+            key: 'castKind',
+            kind: 'enum',
+            values: ['all', 'identical', 'widening', 'any', 'unknown-chain'],
+            default: 'all',
+            desc: 'which category to report',
+        },
         { flag: '--include-literals', key: 'includeLiterals', kind: 'boolean', default: false, desc: 'also check casts on object/array literals (contextually typed — noisy)' },
     ],
     help: `
@@ -88,8 +104,8 @@ Output:
 
 \`as const\` is never an assertion in this sense and is always skipped.`,
 
-    create(options) {
-        const results = [];
+    create(options: Options) {
+        const results: CastResult[] = [];
         const checkAll = options.scope === 'all';
         return {
             visit({ project, sourceFiles }) {
@@ -103,11 +119,11 @@ Output:
                     if (!checkAll && (added === null || added.size === 0)) continue;
 
                     for (const node of nodes) {
-                        const { expression, typeNode } = assertionParts(node);
-                        if (!typeNode || isAsConst(typeNode)) continue;
+                        const parts = assertionParts(node);
+                        if (!parts?.typeNode || isAsConst(parts.typeNode)) continue;
                         const line = node.getStartLineNumber();
-                        if (!checkAll && !added.has(line)) continue;
-                        const hit = classify(node, expression, typeNode, checker, options);
+                        if (!checkAll && !added?.has(line)) continue;
+                        const hit = classify(node, parts.expression, parts.typeNode, checker, options);
                         if (!hit) continue;
                         if (options.castKind !== 'all' && hit.kind !== options.castKind) continue;
                         results.push({ file: filePath, line, ...hit });
@@ -123,3 +139,5 @@ Output:
         };
     },
 };
+
+export default casts;

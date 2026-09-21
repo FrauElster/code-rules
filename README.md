@@ -5,7 +5,7 @@ style rules over a TypeScript project graph. Formerly `find-inline-helpers`.
 
 ## Usage
 
-    node cli.js <command> <tsconfig.json|dir> [...] [flags]
+    node cli.ts <command> <tsconfig.json|dir> [...] [flags]
 
 | Command | Checks |
 |---|---|
@@ -16,8 +16,11 @@ style rules over a TypeScript project graph. Formerly `find-inline-helpers`.
 | `explicit-import` | named imports from barrel modules (`--fix`) |
 | `all` | every check, over one shared project graph |
 
-`node cli.js --help` lists the commands; `node cli.js <command> --help` gives
+`node cli.ts --help` lists the commands; `node cli.ts <command> --help` gives
 that command's flags and the rule it enforces.
+
+The CLI is plain `.ts`, run directly (node's native TypeScript support — no
+build step). See `AGENTS.md` for setup, style rules, and how the tool works.
 
 Each path argument is either a *project* tsconfig (an `include`/`files` list and
 real compiler options) or a directory, walked recursively for `tsconfig*.json`.
@@ -27,15 +30,15 @@ A directory scan skips solution-style tsconfigs (bare `references`) and
 `plugins/tsconfig.ui.json`, `cli/tsconfig.json` — not the bare
 `plugins/tsconfig.json`, which is solution-style and skipped automatically.
 
-    node cli.js all ~/programming/lumaric/lumaric-erp/plugins/tsconfig.backend.json
-    node cli.js explicit-import ~/programming/lumaric/lumaric-erp/plugins/tsconfig.ui.json --fix
+    node cli.ts all ~/programming/lumaric/lumaric-erp/plugins/tsconfig.backend.json
+    node cli.ts explicit-import ~/programming/lumaric/lumaric-erp/plugins/tsconfig.ui.json --fix
 
 Prefer `all` over separate invocations: building the ts-morph project is the
 whole cost (~1-2 min for backend+plugins), and `all` builds it once.
 
 ## `inline`
 
-    [--max-lines=5] [--include-exported]
+    [--max-lines=5] [--include-exported] [--lang=ts|go]
 
 Functions/const-arrows whose body fits `--max-lines` with exactly one reference
 outside their declaration, and top-level consts whose references all sit inside
@@ -53,6 +56,40 @@ one enclosing function.
   of 1 there is not proof of safety — cross-workspace usages aren't visible.
 - A top-level `const { a, b } = ...` destructuring is skipped entirely; only
   `const x = ...` with a plain identifier is considered.
+
+### `--lang=go`
+
+`inline` and `comments` are the two commands with Go support; `casts`,
+`type-lookup`, and `explicit-import` don't have a real Go equivalent (see
+[General notes](#general-notes)).
+
+    node cli.ts inline ~/programming/lumaric/lumaric-erp/go-service --lang=go
+
+Same path-resolution rules as `comments --lang=go` (directory walked for
+`*.go`, or a single file; `vendor/`, `node_modules/`, `.git/`, and generated
+files excluded) — see that section for details. There's no `--scope` flag here
+(no ts-morph equivalent of `--scope` was built for Go's `inline`; it's always
+a whole-package audit).
+
+Reference counting is done by `go-analyzer/main.go`, a small stdlib-only
+`go/ast` program spawned as a subprocess (`go run`, needs the `go` toolchain
+on `PATH`; no `go.mod`/network I/O needed since it imports nothing beyond the
+standard library). It groups files by directory (a package, by Go convention)
+and finds:
+
+- top-level `func`s (not methods — a receiver excludes them) referenced from
+  exactly one place in the package
+- top-level `const`s whose every reference sits inside the same single
+  enclosing function
+
+**This is identifier-name matching, not symbol resolution** — unlike the
+ts-morph path, there's no type-checker backing it (that would need
+`go/packages` plus network/module resolution, which this tool deliberately
+avoids). A local variable that shadows a top-level name can be miscounted as
+a reference. Struct/interface field names, selector expressions (`x.Foo`),
+import aliases, and `:=` redeclarations are excluded from matching to cut
+down the obvious false positives, but treat results here as more of a
+candidate list than the ts-morph side's.
 
 ## `comments`
 
@@ -79,7 +116,7 @@ the whole project and makes no git calls.
 Only `comments` supports Go, and only that one flag — everything else (`inline`,
 `casts`, `type-lookup`, `explicit-import`, `all`) is TypeScript/ts-morph only.
 
-    node cli.js comments ~/programming/lumaric/lumaric-erp/go-service --lang=go
+    node cli.ts comments ~/programming/lumaric/lumaric-erp/go-service --lang=go
 
 With `--lang=go` the path argument is a directory walked recursively for `*.go`
 (or a single `.go` file) instead of a tsconfig — there's no type graph, so this
@@ -87,7 +124,7 @@ path skips ts-morph/`eachProject` entirely. `vendor/`, `node_modules/`, `.git/`
 and any file carrying Go's standard generated-file marker
 (`// Code generated ... DO NOT EDIT.`) are excluded.
 
-Comment scanning for Go is a small hand-rolled lexer (`lib/go-comments.js`),
+Comment scanning for Go is a small hand-rolled lexer (`lib/go-comments.ts`),
 not a real Go parser — it only needs to track string/rune/raw-string
 (`` ` ``) literals well enough not to mistake a `//` or `/*` inside one for a
 real comment. The merge rule for adjacent `//` lines is the same as TS's.
@@ -182,6 +219,17 @@ you to handle. Edits are applied to the file text directly, so re-run the
 project's `pnpm lint:fix` afterwards if you want biome to re-sort the block.
 
 ## General notes
+
+- Go support (`inline`, `comments`, both via `--lang=go`) is deliberately partial.
+  `casts` (redundant `as`/`<T>`, `as any`, `as unknown as`) and `type-lookup`
+  (`Car['engine']` indexed-access types) are checks about TypeScript's
+  structural type system — Go's type assertions/conversions and lack of
+  indexed-access types don't map onto the same rule. `explicit-import`'s
+  barrel-module problem (a named import forcing tsc to resolve everything a
+  re-export barrel touches) doesn't exist in Go's compilation model at all.
+  Porting any of these would mean inventing a new, Go-specific rule rather than
+  checking the same one — ask if that's wanted (a "redundant type conversion"
+  check would be the closest analogue to `casts`).
 
 - One ts-morph `Project` per tsconfig — workspaces consume each other's built
   `.d.ts`, not source, so a symbol's references never span two tsconfigs.
