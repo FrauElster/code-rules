@@ -1,11 +1,12 @@
-// go-analyzer is spawned as a subprocess by lib/go-analyzer.js. It reads a JSON array of absolute
-// .go file paths on stdin, groups them by directory (Go's package boundary), and emits JSON
-// candidates for the `inline` check's two hard, non-tunable rules:
+// go-analyzer is spawned as a subprocess by lib/go-analyzer.ts. It reads a JSON array of absolute
+// .go file paths on stdin and emits JSON candidates for the mode given as its first argument:
 //
-//   - a top-level func used from exactly one place in its package
-//   - a top-level const whose every use sits inside the same single enclosing function
+//   - inline: groups files by directory (Go's package boundary) and reports the `inline` check's
+//     two hard, non-tunable rules — a top-level func used from exactly one place in its package,
+//     and a top-level const whose every use sits inside the same single enclosing function
+//   - if-init: every `if` statement with an init statement, with its source text and line span
 //
-// Tunable filtering (--max-lines, --include-exported) stays in inline.js, same as the ts-morph path.
+// Tunable filtering (--max-lines, --max-length, ...) stays in commands/*.ts, same as the ts-morph path.
 //
 // This is identifier-name matching, not symbol resolution (no go/types, no network/module deps, so
 // it runs on any package without needing it to build) — a local variable that shadows a top-level
@@ -44,6 +45,13 @@ type constCandidate struct {
 	UseCount   int    `json:"useCount"`
 	UsedIn     string `json:"usedIn"`
 	UsedInLine int    `json:"usedInLine"`
+}
+
+type ifInitCandidate struct {
+	File    string `json:"file"`
+	Line    int    `json:"line"`
+	EndLine int    `json:"endLine"`
+	Text    string `json:"text"`
 }
 
 type funcDecl struct {
@@ -242,18 +250,41 @@ func analyzePackage(fset *token.FileSet, files []*ast.File, paths []string) []an
 	return out
 }
 
-func main() {
-	input, err := io.ReadAll(os.Stdin)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "go-analyzer: reading stdin:", err)
-		os.Exit(1)
-	}
-	var paths []string
-	if err := json.Unmarshal(input, &paths); err != nil {
-		fmt.Fprintln(os.Stderr, "go-analyzer: parsing stdin as a JSON array of paths:", err)
-		os.Exit(1)
-	}
+func ifInits(fset *token.FileSet, file *ast.File, path string, src []byte) []any {
+	var out []any
+	ast.Inspect(file, func(n ast.Node) bool {
+		stmt, ok := n.(*ast.IfStmt)
+		if !ok || stmt.Init == nil {
+			return true
+		}
+		start := fset.Position(stmt.Init.Pos())
+		end := fset.Position(stmt.Init.End())
+		out = append(out, ifInitCandidate{File: path, Line: start.Line, EndLine: end.Line, Text: string(src[start.Offset:end.Offset])})
+		return true
+	})
+	return out
+}
 
+func runIfInit(paths []string) []any {
+	fset := token.NewFileSet()
+	var results []any
+	for _, p := range paths {
+		src, err := os.ReadFile(p)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "go-analyzer: skipping %s: %v\n", p, err)
+			continue
+		}
+		f, err := parser.ParseFile(fset, p, src, 0)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "go-analyzer: skipping %s: %v\n", p, err)
+			continue
+		}
+		results = append(results, ifInits(fset, f, p, src)...)
+	}
+	return results
+}
+
+func runInline(paths []string) []any {
 	byDir := map[string][]string{}
 	for _, p := range paths {
 		dir := filepath.Dir(p)
@@ -285,6 +316,35 @@ func main() {
 			continue
 		}
 		results = append(results, analyzePackage(fset, files, ok)...)
+	}
+	return results
+}
+
+func main() {
+	if len(os.Args) != 2 {
+		fmt.Fprintln(os.Stderr, "usage: go-analyzer inline|if-init < paths.json")
+		os.Exit(1)
+	}
+	input, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "go-analyzer: reading stdin:", err)
+		os.Exit(1)
+	}
+	var paths []string
+	if err := json.Unmarshal(input, &paths); err != nil {
+		fmt.Fprintln(os.Stderr, "go-analyzer: parsing stdin as a JSON array of paths:", err)
+		os.Exit(1)
+	}
+
+	var results []any
+	switch os.Args[1] {
+	case "inline":
+		results = runInline(paths)
+	case "if-init":
+		results = runIfInit(paths)
+	default:
+		fmt.Fprintln(os.Stderr, "go-analyzer: unknown mode:", os.Args[1])
+		os.Exit(1)
 	}
 	if results == nil {
 		results = []any{}

@@ -32,4 +32,6 @@ export interface Command {
     members?: Command[];
     create?(options: Options): Runner<ProjectContext>;
     createGo?(options: Options): Runner<string[]>;
+    // a command that needs no project graph at all (and no path)
+    run?(options: Options): void;
 }

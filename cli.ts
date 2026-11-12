@@ -5,7 +5,9 @@
 import casts from './commands/casts.ts';
 import comments from './commands/comments.ts';
 import explicitImport from './commands/explicit-import.ts';
+import ifInit from './commands/if-init.ts';
 import inline from './commands/inline.ts';
+import rules from './commands/rules.ts';
 import singleLetter from './commands/single-letter.ts';
 import typeLookup from './commands/type-lookup.ts';
 import { helpText, parseFlags } from './lib/args.ts';
@@ -14,7 +16,7 @@ import { resolveGoFiles } from './lib/go-project.ts';
 import { eachProject, resolveTsConfigs } from './lib/project.ts';
 import type { Command, FlagSpec } from './lib/types.ts';
 
-const COMMANDS: Command[] = [inline, comments, casts, typeLookup, explicitImport, singleLetter];
+const COMMANDS: Command[] = [inline, comments, casts, typeLookup, explicitImport, singleLetter, ifInit];
 
 // two commands may share a flag only by sharing the one spec object (SCOPE_FLAG) — same name, two specs would
 // silently give `all` one command's parsing for both
@@ -36,14 +38,15 @@ const ALL: Command = {
     help: `
 Runs ${COMMANDS.map(c => c.name).join(', ')} against a single ts-morph Project per
 tsconfig. Building that graph is the ~1-2 min cost, so this is much faster than
-separate invocations — and it's what AGENTS.local.md's plan rule calls.
+separate invocations — and it's what AGENTS.local.md's plan rule calls. With
+--lang=go it runs only the checks that have a Go side.
 
 Takes the union of the subcommands' flags; each one means what it means there.`,
     members: COMMANDS,
 };
 
 function usage(): string {
-    const commands = [...COMMANDS, ALL];
+    const commands = [...COMMANDS, ALL, rules];
     const width = Math.max(...commands.map(c => c.name.length));
     return [
         'code-rules — local-only checks for lumaric-erp AGENTS.md style rules',
@@ -64,7 +67,7 @@ function usage(): string {
 function run(): void {
     const argv = process.argv.slice(2);
     const commandName = argv[0];
-    const command = [...COMMANDS, ALL].find(c => c.name === commandName);
+    const command = [...COMMANDS, ALL, rules].find(c => c.name === commandName);
     if (!command) {
         console.log(usage());
         process.exit(commandName === undefined || commandName === '--help' || commandName === '-h' ? 0 : 1);
@@ -83,6 +86,11 @@ function run(): void {
         console.error((e as Error).message);
         process.exit(1);
     }
+    if (command.run) {
+        if (options.lang === undefined && paths.length > 0) options.lang = detectLang(paths);
+        command.run(options);
+        return;
+    }
     if (paths.length === 0) {
         console.error(`${command.name}: no tsconfig/directory given\n\n${helpText(command)}`);
         process.exit(1);
@@ -90,13 +98,17 @@ function run(): void {
 
     if (options.lang === undefined) options.lang = detectLang(paths);
 
+    const isGo = options.lang === 'go';
+    const members = (command.members ?? [command]).filter(c => (isGo ? c.createGo : c.create));
+    if (members.length === 0) {
+        console.error(`${command.name}: --lang=${options.lang} is not supported by this command`);
+        process.exit(1);
+    }
+
     // Go has no tsconfig/type graph, so it bypasses ts-morph/eachProject entirely — a command that
     // supports it exposes a createGo() factory taking a file path instead of a ts-morph sourceFile
-    if (options.lang === 'go') {
-        if (typeof command.createGo !== 'function') {
-            console.error(`${command.name}: --lang=go is not supported by this command`);
-            process.exit(1);
-        }
+    let runs: { name: string; run: { report(): void } }[];
+    if (isGo) {
         let goFiles: string[];
         try {
             goFiles = resolveGoFiles(paths);
@@ -104,29 +116,26 @@ function run(): void {
             console.error((e as Error).message);
             process.exit(1);
         }
-        const goRun = command.createGo(options);
-        goRun.visit(goFiles);
-        goRun.report();
-        return;
-    }
-
-    let tsConfigFilePaths: string[];
-    try {
-        tsConfigFilePaths = resolveTsConfigs(paths);
-    } catch (e) {
-        console.error((e as Error).message);
-        process.exit(1);
-    }
-
-    const members = command.members ?? [command];
-    const runs = members.map(c => ({ name: c.name, run: c.create!(options) }));
-
-    for (const ctx of eachProject(tsConfigFilePaths)) {
-        for (const r of runs) r.run.visit(ctx);
+        const goRuns = members.map(c => ({ name: c.name, run: c.createGo!(options) }));
+        for (const r of goRuns) r.run.visit(goFiles);
+        runs = goRuns;
+    } else {
+        let tsConfigFilePaths: string[];
+        try {
+            tsConfigFilePaths = resolveTsConfigs(paths);
+        } catch (e) {
+            console.error((e as Error).message);
+            process.exit(1);
+        }
+        const tsRuns = members.map(c => ({ name: c.name, run: c.create!(options) }));
+        for (const ctx of eachProject(tsConfigFilePaths)) {
+            for (const r of tsRuns) r.run.visit(ctx);
+        }
+        runs = tsRuns;
     }
 
     for (const [i, r] of runs.entries()) {
-        if (members.length > 1) console.log(`${i > 0 ? '\n' : ''}== ${r.name} ==\n`);
+        if (runs.length > 1) console.log(`${i > 0 ? '\n' : ''}== ${r.name} ==\n`);
         r.run.report();
     }
 }
