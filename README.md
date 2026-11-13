@@ -23,11 +23,11 @@ Static-analysis CLI that flags inlinable functions/consts, multi-line or prose-l
 | `casts` | type assertions the type already satisfies, `as any`, `as unknown as` |
 | `type-lookup` | `Car["engine"]` where the property's type has a name of its own |
 | `explicit-import` | named imports from barrel modules (`--fix`) |
-| `single-letter` | variables/parameters/catch bindings named with a single letter |
+| `single-letter` | variables/parameters/catch bindings named with a single letter (Go: `:=`/`var`/`range` bindings, params and named results; receivers exempt) |
 | `if-init` | Go only: `if` init statements longer than `--max-length` (default 40) or spanning several lines |
 | `multi-assign` | several values assigned in one statement (`x, y := 1, 2`, `let a = 1, b = 2`, `[a, b] = [1, 2]`), except swaps and `for` clauses |
 | `lint` | runs `pnpm lint` (nearest `package.json` with a `lint` script above each tsconfig) or `go fix -diff ./...` (nearest `go.mod`) and reports failures with their output; always the whole project, never rewrites files |
-| `all` | every check, over one shared project graph (with `--lang=go`, the checks that have a Go side: `inline`, `comments`, `if-init`, `multi-assign`, `lint`) |
+| `all` | every check, over one shared project graph (with `--lang=go`, the checks that have a Go side: `inline`, `comments`, `single-letter`, `if-init`, `multi-assign`, `lint`) |
 | `rules` | print the style rules as Markdown (no path needed) |
 
     node cli.ts all ./tsconfig.json

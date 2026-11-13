@@ -15,10 +15,17 @@ export interface GoSpanCandidate {
     text: string;
 }
 
+export interface GoBindingCandidate {
+    file: string;
+    line: number;
+    kind: 'variable' | 'parameter';
+    name: string;
+}
+
 // runs go-analyzer/main.go as a subprocess (`go run`, not a prebuilt binary — this tool has no
 // build step) over the given absolute .go file paths and returns its JSON candidates. Requires the
 // `go` toolchain on PATH; the analyzer itself needs no go.mod (stdlib-only) and does no network I/O.
-function runGoAnalyzer(mode: 'inline' | 'if-init' | 'multi-assign', filePaths: string[]) {
+function runGoAnalyzer(mode: 'inline' | 'if-init' | 'multi-assign' | 'single-letter', filePaths: string[]) {
     if (filePaths.length === 0) return [];
     const result = spawnSync('go', ['run', MAIN_GO, mode], { input: JSON.stringify(filePaths), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
     if (result.error) {
@@ -40,4 +47,8 @@ export function analyzeGoIfInit(filePaths: string[]): GoSpanCandidate[] {
 
 export function analyzeGoMultiAssign(filePaths: string[]): GoSpanCandidate[] {
     return runGoAnalyzer('multi-assign', filePaths);
+}
+
+export function analyzeGoSingleLetter(filePaths: string[]): GoBindingCandidate[] {
+    return runGoAnalyzer('single-letter', filePaths);
 }

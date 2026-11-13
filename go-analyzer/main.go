@@ -7,6 +7,7 @@
 //   - if-init: every `if` statement with an init statement, with its source text and line span
 //   - multi-assign: every assignment or var/const spec pairing several names with as many values
 //     (`x, y = 1, 2`), minus swaps and `for` init/post statements
+//   - single-letter: every one-character name bound by `:=`, var/const, range, or a func parameter/result
 //
 // Tunable filtering (--max-lines, --max-length, ...) stays in commands/*.ts, same as the ts-morph path.
 //
@@ -27,6 +28,7 @@ import (
 	"path/filepath"
 	"sort"
 	"unicode"
+	"unicode/utf8"
 )
 
 type funcCandidate struct {
@@ -54,6 +56,13 @@ type spanCandidate struct {
 	Line    int    `json:"line"`
 	EndLine int    `json:"endLine"`
 	Text    string `json:"text"`
+}
+
+type bindingCandidate struct {
+	File string `json:"file"`
+	Line int    `json:"line"`
+	Kind string `json:"kind"`
+	Name string `json:"name"`
 }
 
 type funcDecl struct {
@@ -333,6 +342,55 @@ func multiAssigns(fset *token.FileSet, file *ast.File, path string, src []byte) 
 	return out
 }
 
+// receivers are left out: Go convention asks for one- or two-letter receiver names (`func (s *Server)`)
+func singleLetters(fset *token.FileSet, file *ast.File, path string, _ []byte) []any {
+	var out []any
+	add := func(kind string, id *ast.Ident) {
+		if utf8.RuneCountInString(id.Name) == 1 {
+			out = append(out, bindingCandidate{File: path, Line: fset.Position(id.Pos()).Line, Kind: kind, Name: id.Name})
+		}
+	}
+	addFields := func(fields *ast.FieldList) {
+		if fields == nil {
+			return
+		}
+		for _, field := range fields.List {
+			for _, id := range field.Names {
+				add("parameter", id)
+			}
+		}
+	}
+	ast.Inspect(file, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.FuncType:
+			addFields(node.Params)
+			addFields(node.Results)
+		case *ast.ValueSpec:
+			for _, id := range node.Names {
+				add("variable", id)
+			}
+		case *ast.AssignStmt:
+			if node.Tok == token.DEFINE {
+				for _, lhs := range node.Lhs {
+					if id, ok := lhs.(*ast.Ident); ok {
+						add("variable", id)
+					}
+				}
+			}
+		case *ast.RangeStmt:
+			if node.Tok == token.DEFINE {
+				for _, expr := range []ast.Expr{node.Key, node.Value} {
+					if id, ok := expr.(*ast.Ident); ok {
+						add("variable", id)
+					}
+				}
+			}
+		}
+		return true
+	})
+	return out
+}
+
 func runInline(paths []string) []any {
 	byDir := map[string][]string{}
 	for _, p := range paths {
@@ -371,7 +429,7 @@ func runInline(paths []string) []any {
 
 func main() {
 	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: go-analyzer inline|if-init|multi-assign < paths.json")
+		fmt.Fprintln(os.Stderr, "usage: go-analyzer inline|if-init|multi-assign|single-letter < paths.json")
 		os.Exit(1)
 	}
 	input, err := io.ReadAll(os.Stdin)
@@ -393,6 +451,8 @@ func main() {
 		results = runPerFile(paths, ifInits)
 	case "multi-assign":
 		results = runPerFile(paths, multiAssigns)
+	case "single-letter":
+		results = runPerFile(paths, singleLetters)
 	default:
 		fmt.Fprintln(os.Stderr, "go-analyzer: unknown mode:", os.Args[1])
 		os.Exit(1)

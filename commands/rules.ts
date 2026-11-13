@@ -49,8 +49,8 @@ const RULES: Rule[] = [
         text: "**No barrel imports** — import the single module, not a named import from a barrel (`import XMarkIcon from '@heroicons/react/24/outline/XMarkIcon'`): tsc resolves every module a barrel re-exports.",
     },
     {
-        langs: ['ts'],
-        text: '**Names** — a variable, parameter or catch binding says what the value is, never a single letter; `_` for an ignored binding is the exception.',
+        langs: BOTH,
+        text: '**Names** — a variable, parameter or catch binding says what the value is, never a single letter; `_` for an ignored binding and short Go method receivers are the exceptions.',
     },
     {
         langs: ['ts'],

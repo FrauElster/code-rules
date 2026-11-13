@@ -30,13 +30,13 @@ the tool is built and the style it holds itself to.
   claim the same flag name with different definitions.
 - `lib/git.ts` shells out to `git status`/`git diff` to compute which lines
   changed since `HEAD`, backing every command's `--scope=uncommitted`.
-- Four commands (`inline`, `comments`, `if-init`, `multi-assign`) support `--lang=go`, bypassing
+- Five commands (`inline`, `comments`, `single-letter`, `if-init`, `multi-assign`) support `--lang=go`, bypassing
   ts-morph entirely: `lib/go-project.ts` walks a directory for `.go` files,
   `lib/go-comments.ts` is a hand-rolled comment lexer, and
   `lib/go-analyzer.ts` shells out to `go run go-analyzer/main.go <mode>` (a
   stdlib-only `go/ast` program) for reference counting (`inline`), `if`
-  init statements (`if-init`, Go only) and multi-value assignments
-  (`multi-assign`). `lint` is the odd one out: a `createTool` factory that
+  init statements (`if-init`, Go only), multi-value assignments
+  (`multi-assign`) and bound names (`single-letter`). `lint` is the odd one out: a `createTool` factory that
   gets only the resolved tsconfigs / `.go` files and shells out to the
   project's own `pnpm lint` or `go fix -diff ./...` — `cli.ts` skips
   building the ts-morph graph when it's the only check running. Go support is
