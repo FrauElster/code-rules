@@ -1,6 +1,6 @@
 # code-rules
 
-Static-analysis CLI that flags inlinable functions/consts, multi-line comments, redundant type casts, indexed-access types with a real name, barrel imports, single-letter identifiers, long Go `if` init statements, several values assigned in one statement, and failing `pnpm lint` / `go fix -diff` runs in TypeScript (and partially Go) codebases — and prints the matching style rules for an agent's `AGENTS.md`.
+Static-analysis CLI that flags inlinable functions/consts, multi-line or prose-like comments, redundant type casts, indexed-access types with a real name, barrel imports, single-letter identifiers, long Go `if` init statements, several values assigned in one statement, and failing `pnpm lint` / `go fix -diff` runs in TypeScript (and partially Go) codebases — and prints the matching style rules for an agent's `AGENTS.md`.
 
 ## Requirements
 
@@ -19,7 +19,7 @@ Static-analysis CLI that flags inlinable functions/consts, multi-line comments, 
 | Command | Checks |
 |---|---|
 | `inline` | top-level functions/consts used from exactly one place |
-| `comments` | multi-line comments (hard cap ~1 line rule) |
+| `comments` | multi-line comments, and prose-like ones (trailing `.`/`!`/`?`/`;`, or a mid-comment sentence break) |
 | `casts` | type assertions the type already satisfies, `as any`, `as unknown as` |
 | `type-lookup` | `Car["engine"]` where the property's type has a name of its own |
 | `explicit-import` | named imports from barrel modules (`--fix`) |

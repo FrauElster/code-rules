@@ -1,6 +1,8 @@
 export interface CommentBlock {
     startLine: number;
     endLine: number;
+    pos: number;
+    end: number;
 }
 
 // hand-rolled Go lexer, just enough to find comments without misreading `//`/`/*` sequences that occur
@@ -28,11 +30,14 @@ export function goCommentBlocks(text: string): CommentBlock[] {
         }
         if (c === '/' && text[i + 1] === '/') {
             const startLine = line;
+            const pos = i;
             i += 2;
             while (i < n && text[i] !== '\n') i++;
-            if (currentLineBlock && !codeSincePrevComment && startLine === currentLineBlockEndLine + 1) currentLineBlock.endLine = startLine;
-            else {
-                currentLineBlock = { startLine, endLine: startLine };
+            if (currentLineBlock && !codeSincePrevComment && startLine === currentLineBlockEndLine + 1) {
+                currentLineBlock.endLine = startLine;
+                currentLineBlock.end = i;
+            } else {
+                currentLineBlock = { startLine, endLine: startLine, pos, end: i };
                 blocks.push(currentLineBlock);
             }
             currentLineBlockEndLine = startLine;
@@ -41,13 +46,14 @@ export function goCommentBlocks(text: string): CommentBlock[] {
         }
         if (c === '/' && text[i + 1] === '*') {
             const startLine = line;
+            const pos = i;
             i += 2;
             while (i < n && !(text[i] === '*' && text[i + 1] === '/')) {
                 if (text[i] === '\n') line++;
                 i++;
             }
             i += 2;
-            blocks.push({ startLine, endLine: line });
+            blocks.push({ startLine, endLine: line, pos, end: Math.min(i, n) });
             currentLineBlock = null;
             codeSincePrevComment = false;
             continue;
