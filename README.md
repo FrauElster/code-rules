@@ -1,11 +1,11 @@
 # code-rules
 
-Static-analysis CLI that flags inlinable functions/consts, multi-line comments, redundant type casts, indexed-access types with a real name, barrel imports, single-letter identifiers, long Go `if` init statements, and several values assigned in one statement in TypeScript (and partially Go) codebases — and prints the matching style rules for an agent's `AGENTS.md`.
+Static-analysis CLI that flags inlinable functions/consts, multi-line comments, redundant type casts, indexed-access types with a real name, barrel imports, single-letter identifiers, long Go `if` init statements, several values assigned in one statement, and failing `pnpm lint` / `go fix -diff` runs in TypeScript (and partially Go) codebases — and prints the matching style rules for an agent's `AGENTS.md`.
 
 ## Requirements
 
 - Node.js 22+ (native TypeScript support, no build step)
-- pnpm 12+
+- pnpm 12+ (also what `lint` runs for TypeScript projects)
 - Go toolchain on `PATH` (only for `--lang=go` checks)
 
 ## Install
@@ -26,7 +26,8 @@ Static-analysis CLI that flags inlinable functions/consts, multi-line comments, 
 | `single-letter` | variables/parameters/catch bindings named with a single letter |
 | `if-init` | Go only: `if` init statements longer than `--max-length` (default 40) or spanning several lines |
 | `multi-assign` | several values assigned in one statement (`x, y := 1, 2`, `let a = 1, b = 2`, `[a, b] = [1, 2]`), except swaps and `for` clauses |
-| `all` | every check, over one shared project graph (with `--lang=go`, the checks that have a Go side: `inline`, `comments`, `if-init`, `multi-assign`) |
+| `lint` | runs `pnpm lint` (nearest `package.json` with a `lint` script above each tsconfig) or `go fix -diff ./...` (nearest `go.mod`) and reports failures with their output; always the whole project, never rewrites files |
+| `all` | every check, over one shared project graph (with `--lang=go`, the checks that have a Go side: `inline`, `comments`, `if-init`, `multi-assign`, `lint`) |
 | `rules` | print the style rules as Markdown (no path needed) |
 
     node cli.ts all ./tsconfig.json

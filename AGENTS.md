@@ -11,9 +11,9 @@ the tool is built and the style it holds itself to.
 
 ## How it works, at a high level
 
-- `cli.ts` is the entry point. It registers eight checks (`inline`,
+- `cli.ts` is the entry point. It registers nine checks (`inline`,
   `comments`, `casts`, `type-lookup`, `explicit-import`, `single-letter`,
-  `if-init`, `multi-assign`) plus a synthetic `all` command that runs every check with a
+  `if-init`, `multi-assign`, `lint`) plus a synthetic `all` command that runs every check with a
   side for the chosen `--lang` over one shared project graph, and `rules`,
   which needs no path and prints the style rules (`commands/rules.ts`) as
   Markdown for another project's `AGENTS.md`.
@@ -36,7 +36,10 @@ the tool is built and the style it holds itself to.
   `lib/go-analyzer.ts` shells out to `go run go-analyzer/main.go <mode>` (a
   stdlib-only `go/ast` program) for reference counting (`inline`), `if`
   init statements (`if-init`, Go only) and multi-value assignments
-  (`multi-assign`). Go support is
+  (`multi-assign`). `lint` is the odd one out: a `createTool` factory that
+  gets only the resolved tsconfigs / `.go` files and shells out to the
+  project's own `pnpm lint` or `go fix -diff ./...` — `cli.ts` skips
+  building the ts-morph graph when it's the only check running. Go support is
   identifier-name matching, not symbol resolution — treat its output as a
   rougher candidate list than the ts-morph side.
 
@@ -52,6 +55,7 @@ Current capabilities (see `README.md` for flags and examples):
 | `single-letter` | variables/parameters/catch bindings named with a single letter |
 | `if-init` | Go `if` statements with a long or multi-line init statement |
 | `multi-assign` | several values assigned in one statement, minus swaps and `for` clauses |
+| `lint` | a failing `pnpm lint` (TS) or a non-empty `go fix -diff ./...` (Go) |
 
 ## Setup
 

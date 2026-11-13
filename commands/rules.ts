@@ -57,6 +57,14 @@ const RULES: Rule[] = [
         text: "**Formatting** — only through the project's `lint:fix` script, which passes the right `--config-path`. Never run `biome format` / `biome check` directly: without the config it rewrites every file it touches with the default style, and biome keeps objects and calls it has expanded expanded, so a later run with the right config does not undo it.",
     },
     {
+        langs: ['ts'],
+        text: "**Lint clean** — the project's `pnpm lint` passes before a change is done; fix what it reports, don't suppress it.",
+    },
+    {
+        langs: ['go'],
+        text: '**`go fix` clean** — `go fix -diff ./...` reports no patch before a change is done; apply its modernizations with `go fix ./...`.',
+    },
+    {
         langs: ['go'],
         text: '**No linter suppressions** — never `//nolint` to hide a problem; fix the root cause. The one exception is performance: `//nolint:<linter> // <the gain>` (one line naming what it buys). Measure first; a rule is never skipped for convenience.',
     },

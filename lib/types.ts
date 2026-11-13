@@ -32,6 +32,9 @@ export interface Command {
     members?: Command[];
     create?(options: Options): Runner<ProjectContext>;
     createGo?(options: Options): Runner<string[]>;
+    // a check that shells out to the project's own tooling — gets the resolved tsconfigs or .go files,
+    // never the ts-morph graph, and serves both langs (options.lang says which)
+    createTool?(options: Options): Runner<string[]>;
     // a command that needs no project graph at all (and no path)
     run?(options: Options): void;
 }

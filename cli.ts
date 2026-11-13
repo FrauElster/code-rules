@@ -7,6 +7,7 @@ import comments from './commands/comments.ts';
 import explicitImport from './commands/explicit-import.ts';
 import ifInit from './commands/if-init.ts';
 import inline from './commands/inline.ts';
+import lint from './commands/lint.ts';
 import multiAssign from './commands/multi-assign.ts';
 import rules from './commands/rules.ts';
 import singleLetter from './commands/single-letter.ts';
@@ -17,7 +18,7 @@ import { resolveGoFiles } from './lib/go-project.ts';
 import { eachProject, resolveTsConfigs } from './lib/project.ts';
 import type { Command, FlagSpec } from './lib/types.ts';
 
-const COMMANDS: Command[] = [inline, comments, casts, typeLookup, explicitImport, singleLetter, ifInit, multiAssign];
+const COMMANDS: Command[] = [inline, comments, casts, typeLookup, explicitImport, singleLetter, ifInit, multiAssign, lint];
 
 // two commands may share a flag only by sharing the one spec object (SCOPE_FLAG) — same name, two specs would
 // silently give `all` one command's parsing for both
@@ -100,7 +101,7 @@ function run(): void {
     if (options.lang === undefined) options.lang = detectLang(paths);
 
     const isGo = options.lang === 'go';
-    const members = (command.members ?? [command]).filter(c => (isGo ? c.createGo : c.create));
+    const members = (command.members ?? [command]).filter(c => c.createTool ?? (isGo ? c.createGo : c.create));
     if (members.length === 0) {
         console.error(`${command.name}: --lang=${options.lang} is not supported by this command`);
         process.exit(1);
@@ -117,7 +118,7 @@ function run(): void {
             console.error((e as Error).message);
             process.exit(1);
         }
-        const goRuns = members.map(c => ({ name: c.name, run: c.createGo!(options) }));
+        const goRuns = members.map(c => ({ name: c.name, run: (c.createTool ?? c.createGo)!(options) }));
         for (const r of goRuns) r.run.visit(goFiles);
         runs = goRuns;
     } else {
@@ -128,11 +129,16 @@ function run(): void {
             console.error((e as Error).message);
             process.exit(1);
         }
-        const tsRuns = members.map(c => ({ name: c.name, run: c.create!(options) }));
-        for (const ctx of eachProject(tsConfigFilePaths)) {
-            for (const r of tsRuns) r.run.visit(ctx);
+        const toolRuns = members.filter(c => c.createTool).map(c => ({ name: c.name, run: c.createTool!(options) }));
+        for (const r of toolRuns) r.run.visit(tsConfigFilePaths);
+        const tsRuns = members.filter(c => !c.createTool).map(c => ({ name: c.name, run: c.create!(options) }));
+        // building the graph is the ~1-2 min cost — skip it when only tooling checks run
+        if (tsRuns.length > 0) {
+            for (const ctx of eachProject(tsConfigFilePaths)) {
+                for (const r of tsRuns) r.run.visit(ctx);
+            }
         }
-        runs = tsRuns;
+        runs = [...tsRuns, ...toolRuns];
     }
 
     for (const [i, r] of runs.entries()) {
