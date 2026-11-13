@@ -31,3 +31,8 @@ export function addedLines(filePath: string): Set<number> | null {
     }
     return added;
 }
+
+export function touchesAdded(added: Set<number> | null | undefined, line: number, endLine: number): boolean {
+    for (let current = line; current <= endLine; current++) if (added?.has(current)) return true;
+    return false;
+}

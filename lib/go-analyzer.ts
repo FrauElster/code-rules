@@ -8,7 +8,7 @@ export type GoInlineCandidate =
     | { kind: 'func'; file: string; line: number; name: string; bodyLines: number; exported: boolean }
     | { kind: 'const'; file: string; line: number; name: string; useCount: number; usedIn: string; usedInLine: number; exported: boolean };
 
-export interface GoIfInitCandidate {
+export interface GoSpanCandidate {
     file: string;
     line: number;
     endLine: number;
@@ -18,7 +18,7 @@ export interface GoIfInitCandidate {
 // runs go-analyzer/main.go as a subprocess (`go run`, not a prebuilt binary — this tool has no
 // build step) over the given absolute .go file paths and returns its JSON candidates. Requires the
 // `go` toolchain on PATH; the analyzer itself needs no go.mod (stdlib-only) and does no network I/O.
-function runGoAnalyzer(mode: 'inline' | 'if-init', filePaths: string[]) {
+function runGoAnalyzer(mode: 'inline' | 'if-init' | 'multi-assign', filePaths: string[]) {
     if (filePaths.length === 0) return [];
     const result = spawnSync('go', ['run', MAIN_GO, mode], { input: JSON.stringify(filePaths), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
     if (result.error) {
@@ -34,6 +34,10 @@ export function analyzeGoInline(filePaths: string[]): GoInlineCandidate[] {
     return runGoAnalyzer('inline', filePaths);
 }
 
-export function analyzeGoIfInit(filePaths: string[]): GoIfInitCandidate[] {
+export function analyzeGoIfInit(filePaths: string[]): GoSpanCandidate[] {
     return runGoAnalyzer('if-init', filePaths);
+}
+
+export function analyzeGoMultiAssign(filePaths: string[]): GoSpanCandidate[] {
+    return runGoAnalyzer('multi-assign', filePaths);
 }

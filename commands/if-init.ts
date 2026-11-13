@@ -1,6 +1,6 @@
 import { LANG_FLAG, SCOPE_FLAG } from '../lib/args.ts';
-import { addedLines } from '../lib/git.ts';
-import { analyzeGoIfInit, type GoIfInitCandidate } from '../lib/go-analyzer.ts';
+import { addedLines, touchesAdded } from '../lib/git.ts';
+import { analyzeGoIfInit, type GoSpanCandidate } from '../lib/go-analyzer.ts';
 import type { Command, Options } from '../lib/types.ts';
 
 const ifInit: Command = {
@@ -28,7 +28,7 @@ Output:
   file:line-endLine  (Nl)  first line of the init statement …`,
 
     createGo(options: Options) {
-        const results: GoIfInitCandidate[] = [];
+        const results: GoSpanCandidate[] = [];
         const checkAll = options.scope === 'all';
         const maxLength = options.maxLength as number;
         return {
@@ -38,15 +38,7 @@ Output:
                     if (candidate.endLine === candidate.line && candidate.text.length <= maxLength) continue;
                     if (!checkAll) {
                         if (!addedByFile.has(candidate.file)) addedByFile.set(candidate.file, addedLines(candidate.file));
-                        const added = addedByFile.get(candidate.file);
-                        let overlapsAdded = false;
-                        for (let line = candidate.line; line <= candidate.endLine; line++) {
-                            if (added?.has(line)) {
-                                overlapsAdded = true;
-                                break;
-                            }
-                        }
-                        if (!overlapsAdded) continue;
+                        if (!touchesAdded(addedByFile.get(candidate.file), candidate.line, candidate.endLine)) continue;
                     }
                     results.push(candidate);
                 }

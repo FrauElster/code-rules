@@ -29,6 +29,10 @@ const RULES: Rule[] = [
         text: '**Subagents** — avoid for work you can do directly; use them only for real parallelism or separation of concerns.',
     },
     {
+        langs: BOTH,
+        text: '**One assignment per statement** — never assign several independent values at once (`x, y := 1, 2`, `let a = 1, b = 2`, `const [a, b] = [1, 2]`); give each its own line. Destructuring a call that returns several values (`v, err := f()`, `const [a, b] = f()`), a swap (`a, b = b, a`) and a `for` clause are fine.',
+    },
+    {
         langs: ['ts'],
         text: '**No linter suppressions** — never `// @ts-ignore`, `// @ts-expect-error`, and no `// biome-ignore` to hide a problem; fix the root cause. The one exception is performance: when a biome rule blocks a change that is better for speed, memory or CPU, skip it with `// biome-ignore lint/<group>/<rule>: <the gain>` (one line naming what it buys). Measure first; a rule is never skipped for convenience.',
     },

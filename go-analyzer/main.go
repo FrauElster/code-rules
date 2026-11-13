@@ -5,6 +5,8 @@
 //     two hard, non-tunable rules — a top-level func used from exactly one place in its package,
 //     and a top-level const whose every use sits inside the same single enclosing function
 //   - if-init: every `if` statement with an init statement, with its source text and line span
+//   - multi-assign: every assignment or var/const spec pairing several names with as many values
+//     (`x, y = 1, 2`), minus swaps and `for` init/post statements
 //
 // Tunable filtering (--max-lines, --max-length, ...) stays in commands/*.ts, same as the ts-morph path.
 //
@@ -47,7 +49,7 @@ type constCandidate struct {
 	UsedInLine int    `json:"usedInLine"`
 }
 
-type ifInitCandidate struct {
+type spanCandidate struct {
 	File    string `json:"file"`
 	Line    int    `json:"line"`
 	EndLine int    `json:"endLine"`
@@ -250,6 +252,12 @@ func analyzePackage(fset *token.FileSet, files []*ast.File, paths []string) []an
 	return out
 }
 
+func span(fset *token.FileSet, path string, src []byte, node ast.Node) spanCandidate {
+	start := fset.Position(node.Pos())
+	end := fset.Position(node.End())
+	return spanCandidate{File: path, Line: start.Line, EndLine: end.Line, Text: string(src[start.Offset:end.Offset])}
+}
+
 func ifInits(fset *token.FileSet, file *ast.File, path string, src []byte) []any {
 	var out []any
 	ast.Inspect(file, func(n ast.Node) bool {
@@ -257,15 +265,13 @@ func ifInits(fset *token.FileSet, file *ast.File, path string, src []byte) []any
 		if !ok || stmt.Init == nil {
 			return true
 		}
-		start := fset.Position(stmt.Init.Pos())
-		end := fset.Position(stmt.Init.End())
-		out = append(out, ifInitCandidate{File: path, Line: start.Line, EndLine: end.Line, Text: string(src[start.Offset:end.Offset])})
+		out = append(out, span(fset, path, src, stmt.Init))
 		return true
 	})
 	return out
 }
 
-func runIfInit(paths []string) []any {
+func runPerFile(paths []string, analyze func(*token.FileSet, *ast.File, string, []byte) []any) []any {
 	fset := token.NewFileSet()
 	var results []any
 	for _, p := range paths {
@@ -279,9 +285,52 @@ func runIfInit(paths []string) []any {
 			fmt.Fprintf(os.Stderr, "go-analyzer: skipping %s: %v\n", p, err)
 			continue
 		}
-		results = append(results, ifInits(fset, f, p, src)...)
+		results = append(results, analyze(fset, f, p, src)...)
 	}
 	return results
+}
+
+// a swap/rotation (`a, b = b, a`) needs the parallel assignment — split up, it needs a temporary
+func isPermutation(src []byte, fset *token.FileSet, lhs, rhs []ast.Expr) bool {
+	text := func(e ast.Expr) string {
+		return string(src[fset.Position(e.Pos()).Offset:fset.Position(e.End()).Offset])
+	}
+	counts := map[string]int{}
+	for _, e := range lhs {
+		counts[text(e)]++
+	}
+	for _, e := range rhs {
+		counts[text(e)]--
+	}
+	for _, n := range counts {
+		if n != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func multiAssigns(fset *token.FileSet, file *ast.File, path string, src []byte) []any {
+	var out []any
+	// `for i, j := 0, n-1; i < j; i, j = i+1, j-1` — a for clause has room for only one statement each
+	inForClause := map[ast.Stmt]bool{}
+	ast.Inspect(file, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.ForStmt:
+			inForClause[node.Init] = true
+			inForClause[node.Post] = true
+		case *ast.AssignStmt:
+			if len(node.Lhs) > 1 && len(node.Rhs) == len(node.Lhs) && !inForClause[node] && !isPermutation(src, fset, node.Lhs, node.Rhs) {
+				out = append(out, span(fset, path, src, node))
+			}
+		case *ast.ValueSpec:
+			if len(node.Names) > 1 && len(node.Values) == len(node.Names) {
+				out = append(out, span(fset, path, src, node))
+			}
+		}
+		return true
+	})
+	return out
 }
 
 func runInline(paths []string) []any {
@@ -322,7 +371,7 @@ func runInline(paths []string) []any {
 
 func main() {
 	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: go-analyzer inline|if-init < paths.json")
+		fmt.Fprintln(os.Stderr, "usage: go-analyzer inline|if-init|multi-assign < paths.json")
 		os.Exit(1)
 	}
 	input, err := io.ReadAll(os.Stdin)
@@ -341,7 +390,9 @@ func main() {
 	case "inline":
 		results = runInline(paths)
 	case "if-init":
-		results = runIfInit(paths)
+		results = runPerFile(paths, ifInits)
+	case "multi-assign":
+		results = runPerFile(paths, multiAssigns)
 	default:
 		fmt.Fprintln(os.Stderr, "go-analyzer: unknown mode:", os.Args[1])
 		os.Exit(1)

@@ -1,6 +1,6 @@
 # code-rules
 
-Static-analysis CLI that flags inlinable functions/consts, multi-line comments, redundant type casts, indexed-access types with a real name, barrel imports, single-letter identifiers, and long Go `if` init statements in TypeScript (and partially Go) codebases — and prints the matching style rules for an agent's `AGENTS.md`.
+Static-analysis CLI that flags inlinable functions/consts, multi-line comments, redundant type casts, indexed-access types with a real name, barrel imports, single-letter identifiers, long Go `if` init statements, and several values assigned in one statement in TypeScript (and partially Go) codebases — and prints the matching style rules for an agent's `AGENTS.md`.
 
 ## Requirements
 
@@ -25,7 +25,8 @@ Static-analysis CLI that flags inlinable functions/consts, multi-line comments, 
 | `explicit-import` | named imports from barrel modules (`--fix`) |
 | `single-letter` | variables/parameters/catch bindings named with a single letter |
 | `if-init` | Go only: `if` init statements longer than `--max-length` (default 40) or spanning several lines |
-| `all` | every check, over one shared project graph (with `--lang=go`, the checks that have a Go side: `inline`, `comments`, `if-init`) |
+| `multi-assign` | several values assigned in one statement (`x, y := 1, 2`, `let a = 1, b = 2`, `[a, b] = [1, 2]`), except swaps and `for` clauses |
+| `all` | every check, over one shared project graph (with `--lang=go`, the checks that have a Go side: `inline`, `comments`, `if-init`, `multi-assign`) |
 | `rules` | print the style rules as Markdown (no path needed) |
 
     node cli.ts all ./tsconfig.json

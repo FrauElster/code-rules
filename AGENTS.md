@@ -11,9 +11,9 @@ the tool is built and the style it holds itself to.
 
 ## How it works, at a high level
 
-- `cli.ts` is the entry point. It registers seven checks (`inline`,
+- `cli.ts` is the entry point. It registers eight checks (`inline`,
   `comments`, `casts`, `type-lookup`, `explicit-import`, `single-letter`,
-  `if-init`) plus a synthetic `all` command that runs every check with a
+  `if-init`, `multi-assign`) plus a synthetic `all` command that runs every check with a
   side for the chosen `--lang` over one shared project graph, and `rules`,
   which needs no path and prints the style rules (`commands/rules.ts`) as
   Markdown for another project's `AGENTS.md`.
@@ -30,12 +30,13 @@ the tool is built and the style it holds itself to.
   claim the same flag name with different definitions.
 - `lib/git.ts` shells out to `git status`/`git diff` to compute which lines
   changed since `HEAD`, backing every command's `--scope=uncommitted`.
-- Three commands (`inline`, `comments`, `if-init`) support `--lang=go`, bypassing
+- Four commands (`inline`, `comments`, `if-init`, `multi-assign`) support `--lang=go`, bypassing
   ts-morph entirely: `lib/go-project.ts` walks a directory for `.go` files,
   `lib/go-comments.ts` is a hand-rolled comment lexer, and
   `lib/go-analyzer.ts` shells out to `go run go-analyzer/main.go <mode>` (a
-  stdlib-only `go/ast` program) for reference counting (`inline`) and `if`
-  init statements (`if-init`, Go only). Go support is
+  stdlib-only `go/ast` program) for reference counting (`inline`), `if`
+  init statements (`if-init`, Go only) and multi-value assignments
+  (`multi-assign`). Go support is
   identifier-name matching, not symbol resolution — treat its output as a
   rougher candidate list than the ts-morph side.
 
@@ -50,6 +51,7 @@ Current capabilities (see `README.md` for flags and examples):
 | `explicit-import` | named imports from barrel modules, with `--fix` |
 | `single-letter` | variables/parameters/catch bindings named with a single letter |
 | `if-init` | Go `if` statements with a long or multi-line init statement |
+| `multi-assign` | several values assigned in one statement, minus swaps and `for` clauses |
 
 ## Setup
 
