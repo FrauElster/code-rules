@@ -1,5 +1,5 @@
 import { type Identifier, Node, type SourceFile, SyntaxKind } from 'ts-morph';
-import { LANG_FLAG } from '../lib/args.ts';
+import { INCLUDE_EXPORTED_FLAG, LANG_FLAG } from '../lib/args.ts';
 import { analyzeGoInline } from '../lib/go-analyzer.ts';
 import type { Command, Options } from '../lib/types.ts';
 
@@ -112,11 +112,7 @@ function reportResults(results: Result[]): void {
 const inline: Command = {
     name: 'inline',
     summary: 'top-level functions/consts used from exactly one place',
-    flags: [
-        { flag: '--max-lines=N', key: 'maxLines', kind: 'number', default: 5, desc: 'max function body lines to flag; consts are unbounded' },
-        { flag: '--include-exported', key: 'includeExported', kind: 'boolean', default: false, desc: 'also flag exported bindings (cross-package callers are invisible)' },
-        LANG_FLAG,
-    ],
+    flags: [{ flag: '--max-lines=N', key: 'maxLines', kind: 'number', default: 5, desc: 'max function body lines to flag; consts are unbounded' }, INCLUDE_EXPORTED_FLAG, LANG_FLAG],
     help: `
 Flags candidates for AGENTS.md's "inline single-caller helper" and "inline
 single-caller top-level consts" rules:

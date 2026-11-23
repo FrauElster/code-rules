@@ -14,11 +14,15 @@ const BOTH: readonly Lang[] = ['ts', 'go'];
 const RULES: Rule[] = [
     {
         langs: BOTH,
-        text: '**Comments** — only for unexpected/non-obvious behaviour (platform quirks, deliberate-looking-wrong guards, layout hacks). Terse lowercase fragments, no trailing period, ~1 line. Never restate the next line, never describe the change process, tasks or plans. No `// ---` / `// ===` rulers. Applies to doc comments too.',
+        text: '**Comments** — only for unexpected/non-obvious behaviour (platform quirks, deliberate-looking-wrong guards, layout hacks). Terse lowercase fragments, no trailing period, ~1 line. Never restate the next line, never describe the change process, tasks or plans, and never mention plan or knowledge files (`*.md`). No `// ---` / `// ===` rulers. Applies to doc comments too.',
     },
     {
         langs: BOTH,
         text: '**Inline single-caller code** — a simple helper or top-level `const` used from exactly one function becomes a local in that function, unless it is exported, tested on its own, or names a meaningful step.',
+    },
+    {
+        langs: BOTH,
+        text: '**No dead code** — delete a top-level function, const, type or class that nothing references. One that only tests reference is a smell too: either production code needs it, or it goes together with its tests.',
     },
     {
         langs: BOTH,
@@ -30,7 +34,7 @@ const RULES: Rule[] = [
     },
     {
         langs: BOTH,
-        text: '**One assignment per statement** — never assign several independent values at once (`x, y := 1, 2`, `let a = 1, b = 2`, `const [a, b] = [1, 2]`); give each its own line. Destructuring a call that returns several values (`v, err := f()`, `const [a, b] = f()`), a swap (`a, b = b, a`) and a `for` clause are fine.',
+        text: '**One assignment per statement** — never assign several independent values at once (`x, y := 1, 2`, `let a = 1, b = 2`, `const [a, b] = [1, 2]`); give each its own line. In Go the same goes for a grouped `var (...)` block of several declarations inside a function: write one `var` per line (package-level groups are fine). Destructuring a call that returns several values (`v, err := f()`, `const [a, b] = f()`), a swap (`a, b = b, a`) and a `for` clause are fine.',
     },
     {
         langs: ['ts'],
@@ -50,7 +54,7 @@ const RULES: Rule[] = [
     },
     {
         langs: BOTH,
-        text: '**Names** — a variable, parameter or catch binding says what the value is, never a single letter; `_` for an ignored binding and short Go method receivers are the exceptions.',
+        text: '**Names** — a variable, parameter or catch binding says what the value is, never a single letter; `_` for an ignored binding, short Go method receivers and the Go stdlib idioms (`w http.ResponseWriter`, `r *http.Request`, `t *testing.T`, `w io.Writer`, `r io.Reader`, `i`/`j`/`k` loop counters, `a, b` in a comparator) are the exceptions.',
     },
     {
         langs: ['ts'],
@@ -59,6 +63,14 @@ const RULES: Rule[] = [
     {
         langs: ['ts'],
         text: "**Lint clean** — the project's `pnpm lint` passes before a change is done; fix what it reports, don't suppress it.",
+    },
+    {
+        langs: ['ts'],
+        text: '**No known-vulnerable dependencies** — `pnpm audit` reports nothing before a change is done; upgrade the affected package rather than ignoring the advisory.',
+    },
+    {
+        langs: ['go'],
+        text: '**`govulncheck` clean** — `govulncheck ./...` reports no called vulnerability before a change is done; bump the affected module rather than ignoring it.',
     },
     {
         langs: ['go'],

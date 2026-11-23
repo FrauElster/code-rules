@@ -21,6 +21,15 @@ export const LANG_FLAG: FlagSpec = {
     desc: 'which project graph to scan: TypeScript (ts-morph, needs a tsconfig/dir) or Go (needs a dir/*.go, no type graph). Default: auto-detected from the path (go.mod → go, else ts)',
 };
 
+// shared by `inline` and `dead-code` — one spec object for the same reason as SCOPE_FLAG
+export const INCLUDE_EXPORTED_FLAG: FlagSpec = {
+    flag: '--include-exported',
+    key: 'includeExported',
+    kind: 'boolean',
+    default: false,
+    desc: 'also flag exported bindings (callers outside the scanned paths are invisible)',
+};
+
 // a flag spec is { flag, key, kind: 'boolean'|'number'|'enum'|'list', values?, default?, desc }
 // `flag` is the display form ('--max-lines=N'); everything before the '=' is the matched name.
 

@@ -84,6 +84,14 @@ const DIRECTIVE = /^(eslint-|biome-ignore|@ts-|go:|nolint|prettier-ignore|istanb
 // periods that aren't sentence ends: code spans, urls, common abbreviations, `...` ellipses
 const NON_PROSE = /`[^`]*`|\S+:\/\/\S+|\b(e\.g|i\.e|etc|vs|cf|approx)\.|\.{2,}/gi;
 
+// a `.md` path in a comment usually points at a plan or knowledge file the code shouldn't depend on
+const MD_REFERENCE = /(?<![\w-])[\w./-]*[\w-]\.md\b/i;
+
+function mdHint(raw: string): string[] {
+    const match = MD_REFERENCE.exec(raw);
+    return match ? [`mentions ${match[0]}`] : [];
+}
+
 function proseHints(raw: string): string[] {
     const lines = raw
         .split('\n')
@@ -116,7 +124,7 @@ function collect(results: CommentResult[], file: string, added: Set<number> | nu
         }
         if (!overlapsAdded) return;
     }
-    const hints = proseHints(block.text);
+    const hints = [...proseHints(block.text), ...mdHint(block.text)];
     if (endLine > startLine) hints.unshift(`${endLine - startLine + 1}l comment`);
     if (hints.length > 0) results.push({ file, startLine, endLine, hints });
 }
@@ -142,6 +150,8 @@ instead of a terse fragment, per the "terse lowercase fragments, no trailing
 period, ~1 line" comment rule. Prose hints:
   trailing '.'      ends like a sentence (also '!', '?', ';')
   sentence break    . ! ? or ; followed by more text mid-comment
+Separately, a comment that names a *.md file (PLAN.md, docs/notes.md) gets a
+"mentions X.md" hint: plans and knowledge files don't belong in comments.
 Code spans, URLs, e.g./i.e./etc./vs., ellipses and tool directives (eslint-,
 biome-ignore, @ts-, go:, nolint, ...) never count as prose.
 

@@ -1,8 +1,21 @@
 import { Node, type SourceFile, SyntaxKind } from 'ts-morph';
 import { LANG_FLAG, SCOPE_FLAG } from '../lib/args.ts';
 import { addedLines } from '../lib/git.ts';
+import type { GoBindingCandidate } from '../lib/go-analyzer.ts';
 import { analyzeGoSingleLetter } from '../lib/go-analyzer.ts';
 import type { Command, Options } from '../lib/types.ts';
+
+// Go parameters whose one-letter name is the stdlib's own convention, keyed `name type`
+const GO_IDIOMS: readonly string[] = ['w http.ResponseWriter', 'r *http.Request', 't *testing.T', 'b *testing.B', 'f *testing.F', 'm *testing.M', 'w io.Writer', 'r io.Reader'];
+
+const GO_LOOP_COUNTERS: ReadonlySet<string> = new Set(['i', 'j', 'k']);
+
+// the type is matched as written in source, so an aliased import (`h "net/http"`) is not recognized
+function isGoIdiom(hit: GoBindingCandidate, idioms: ReadonlySet<string>): boolean {
+    if (hit.loop && GO_LOOP_COUNTERS.has(hit.name)) return true;
+    if (hit.comparator) return true;
+    return hit.type !== undefined && idioms.has(`${hit.name} ${hit.type}`);
+}
 
 type Kind = 'variable' | 'parameter' | 'catch';
 
@@ -53,6 +66,13 @@ const singleLetter: Command = {
         SCOPE_FLAG,
         LANG_FLAG,
         { flag: '--kind=all|variable|parameter|catch', key: 'kind', kind: 'enum', values: ['all', 'variable', 'parameter', 'catch'], default: 'all', desc: 'which binding kind to report' },
+        {
+            flag: '--allow-typed=<name:type>',
+            key: 'allowTyped',
+            kind: 'list',
+            default: [],
+            desc: 'Go only: exempt a parameter name with this exact type (e.g. c:*gin.Context); repeatable, adds to the built-in idioms',
+        },
         { flag: '--allow=<names>', key: 'allow', kind: 'list', default: ['_'], desc: "names to exempt (comma-free: repeat the flag); default exempts only '_'" },
     ],
     help: `
@@ -72,7 +92,13 @@ declaration — the fix is almost always a name that says what the value is.
                        variable: \`:=\`, var/const, range key/value, type-switch
                        binding; parameter: func params and named results. Method
                        receivers are skipped (Go convention keeps them short), and
-                       there is no catch kind.
+                       there is no catch kind. Also exempt: the stdlib idioms
+                       \`w http.ResponseWriter\`, \`r *http.Request\`, \`t *testing.T\`
+                       (and \`b\`/\`f\`/\`m\` for B/F/M), \`w io.Writer\`, \`r io.Reader\`;
+                       \`i\`/\`j\`/\`k\` as a \`for\` init variable or \`range\` key; and
+                       \`a, b\` as the two parameters of a comparator func literal.
+  --allow-typed=n:type  Go only, repeatable; adds a name+type exemption, e.g.
+                       --allow-typed=c:*gin.Context
 
 Output:
   file:line  kind  name
@@ -111,11 +137,12 @@ add it to --allow rather than treating every hit as a rename.`,
         const checkAll = options.scope === 'all';
         const kindFilter = options.kind as string;
         const allow = new Set(options.allow as string[]);
+        const idioms = new Set([...GO_IDIOMS, ...(options.allowTyped as string[]).map(entry => entry.replace(':', ' '))]);
         return {
             visit(filePaths: string[]) {
                 const addedByFile = new Map<string, Set<number> | null>();
                 for (const hit of analyzeGoSingleLetter(filePaths)) {
-                    if (allow.has(hit.name) || (kindFilter !== 'all' && hit.kind !== kindFilter)) continue;
+                    if (allow.has(hit.name) || isGoIdiom(hit, idioms) || (kindFilter !== 'all' && hit.kind !== kindFilter)) continue;
                     if (!checkAll) {
                         if (!addedByFile.has(hit.file)) addedByFile.set(hit.file, addedLines(hit.file));
                         if (!addedByFile.get(hit.file)?.has(hit.line)) continue;

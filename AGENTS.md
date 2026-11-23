@@ -11,9 +11,9 @@ the tool is built and the style it holds itself to.
 
 ## How it works, at a high level
 
-- `cli.ts` is the entry point. It registers nine checks (`inline`,
+- `cli.ts` is the entry point. It registers eleven checks (`inline`,
   `comments`, `casts`, `type-lookup`, `explicit-import`, `single-letter`,
-  `if-init`, `multi-assign`, `lint`) plus a synthetic `all` command that runs every check with a
+  `if-init`, `multi-assign`, `dead-code`, `lint`, `vuln`) plus a synthetic `all` command that runs every check with a
   side for the chosen `--lang` over one shared project graph, and `rules`,
   which needs no path and prints the style rules (`commands/rules.ts`) as
   Markdown for another project's `AGENTS.md`.
@@ -30,15 +30,16 @@ the tool is built and the style it holds itself to.
   claim the same flag name with different definitions.
 - `lib/git.ts` shells out to `git status`/`git diff` to compute which lines
   changed since `HEAD`, backing every command's `--scope=uncommitted`.
-- Five commands (`inline`, `comments`, `single-letter`, `if-init`, `multi-assign`) support `--lang=go`, bypassing
+- Six commands (`inline`, `comments`, `single-letter`, `if-init`, `multi-assign`, `dead-code`) support `--lang=go`, bypassing
   ts-morph entirely: `lib/go-project.ts` walks a directory for `.go` files,
   `lib/go-comments.ts` is a hand-rolled comment lexer, and
   `lib/go-analyzer.ts` shells out to `go run go-analyzer/main.go <mode>` (a
   stdlib-only `go/ast` program) for reference counting (`inline`), `if`
   init statements (`if-init`, Go only), multi-value assignments
-  (`multi-assign`) and bound names (`single-letter`). `lint` is the odd one out: a `createTool` factory that
-  gets only the resolved tsconfigs / `.go` files and shells out to the
-  project's own `pnpm lint` or `go fix -diff ./...` — `cli.ts` skips
+  (`multi-assign`) and bound names (`single-letter`). `lint` and `vuln` are the odd ones out: `createTool` factories that
+  get only the resolved tsconfigs / `.go` files and shell out to the
+  project's own `pnpm lint` / `go fix -diff ./...` or to `pnpm audit` /
+  `govulncheck ./...` (shared spawn/report code lives in `lib/tool.ts`) — `cli.ts` skips
   building the ts-morph graph when it's the only check running. Go support is
   identifier-name matching, not symbol resolution — treat its output as a
   rougher candidate list than the ts-morph side.
@@ -48,14 +49,16 @@ Current capabilities (see `README.md` for flags and examples):
 | Command | What it flags |
 |---|---|
 | `inline` | top-level functions/consts with exactly one caller |
-| `comments` | multi-line comments (`/* */` or adjacent `//` runs) |
+| `comments` | multi-line or prose-like comments (`/* */` or adjacent `//` runs), and comments mentioning a `*.md` file |
 | `casts` | redundant `as`/`<T>` assertions, `as any`, `as unknown as` |
 | `type-lookup` | `Car["engine"]` where the result has a name of its own |
 | `explicit-import` | named imports from barrel modules, with `--fix` |
 | `single-letter` | variables/parameters/catch bindings named with a single letter |
 | `if-init` | Go `if` statements with a long or multi-line init statement |
 | `multi-assign` | several values assigned in one statement, minus swaps and `for` clauses |
+| `dead-code` | top-level bindings with no production reference — unused, or only used in tests |
 | `lint` | a failing `pnpm lint` (TS) or a non-empty `go fix -diff ./...` (Go) |
+| `vuln` | a failing `pnpm audit` (TS) or `govulncheck ./...` (Go) — known vulnerable dependencies |
 
 ## Setup
 

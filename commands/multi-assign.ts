@@ -45,7 +45,7 @@ function report(results: GoSpanCandidate[], checkAll: boolean): void {
 
 const multiAssign: Command = {
     name: 'multi-assign',
-    summary: 'several values assigned in one statement (`x, y = 1, 2`)',
+    summary: 'several values assigned in one statement (`x, y = 1, 2`), or a grouped Go `var (...)` in a func',
     flags: [SCOPE_FLAG, LANG_FLAG],
     help: `
 Flags a statement that assigns several independent values at once:
@@ -55,10 +55,13 @@ Flags a statement that assigns several independent values at once:
   let a = 1, b = 2;               // TS: flagged
   const [a, b] = [1, 2];          // TS: flagged
   [a, b] = [1, 2];                // TS: flagged
+  var ( a int; b string )         // Go: flagged inside a func, write one \`var\` per line
 
 Not flagged: one call returning several values (\`v, err := f()\`,
 \`const [a, b] = f()\`), a swap or rotation (\`a, b = b, a\`), and the init/post
-clause of a \`for\` loop, which has room for only one statement.
+clause of a \`for\` loop, which has room for only one statement. A grouped Go
+\`const (...)\` block that uses iota or an implicit repeat is one enum, and a
+package-level \`var (...)\` / \`const (...)\` block is fine too.
 
   --scope=uncommitted  only statements overlapping a line added/modified since HEAD
   --scope=all          the whole project

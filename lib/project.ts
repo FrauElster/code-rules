@@ -1,10 +1,16 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { Project, ts } from 'ts-morph';
 import type { ProjectContext } from './types.ts';
 
 const EXCLUDE_PATH_PARTS = ['/node_modules/', '/.types/', '/dist/', '/schema/', 'plugin-map.ts', '.generated.', '.test.', '.spec.', '.d.ts'];
 const EXCLUDE_DIR_NAMES = new Set(['node_modules', '.types', 'dist', '.git']);
+
+const TEST_FILE_PATTERN = /\.(test|spec)\.[cm]?[jt]sx?$|\/__tests__\//;
+
+export function isTestFile(filePath: string): boolean {
+    return TEST_FILE_PATTERN.test(filePath);
+}
 
 // solution-style tsconfigs (bare `references`, `files: []`) aren't runnable projects — skip them
 function isProjectTsConfig(filePath: string): boolean {
@@ -52,5 +58,22 @@ export function* eachProject(tsConfigFilePaths: string[]): Generator<ProjectCont
         const project = new Project({ tsConfigFilePath, skipAddingFilesFromTsConfig: false });
         const sourceFiles = project.getSourceFiles().filter(sf => !EXCLUDE_PATH_PARTS.some(p => sf.getFilePath().includes(p)));
         yield { tsConfigFilePath, project, sourceFiles };
+    }
+}
+
+// eachProject leaves test files out of sourceFiles, and a tsconfig often leaves them out of the project
+// altogether — a check that needs to see who calls what from tests loads them for the duration of `run`
+// and unloads them again, so the other checks sharing this Project see exactly what they did before
+export function withTestFiles<T>({ tsConfigFilePath, project }: ProjectContext, run: () => T): T {
+    const loaded = new Set(project.getSourceFiles().map(sf => sf.getFilePath()));
+    const root = dirname(resolve(tsConfigFilePath));
+    const extensions = '{ts,tsx,mts,cts,js,jsx,mjs,cjs}';
+    const added = project
+        .addSourceFilesAtPaths([`${root}/**/*.{test,spec}.${extensions}`, `${root}/**/__tests__/**/*.${extensions}`, `!${root}/**/node_modules/**`, `!${root}/**/dist/**`])
+        .filter(sf => !loaded.has(sf.getFilePath()));
+    try {
+        return run();
+    } finally {
+        for (const sf of added) project.removeSourceFile(sf);
     }
 }
