@@ -116,7 +116,7 @@ add it to --allow rather than treating every hit as a rename.`,
             visit({ sourceFiles }) {
                 for (const sourceFile of sourceFiles) {
                     const filePath = sourceFile.getFilePath();
-                    const added = checkAll ? null : addedLines(filePath);
+                    const added = checkAll ? null : addedLines(filePath, options.scope);
                     if (!checkAll && (added === null || added.size === 0)) continue;
 
                     for (const hit of candidatesInFile(sourceFile, allow)) {
@@ -144,7 +144,7 @@ add it to --allow rather than treating every hit as a rename.`,
                 for (const hit of analyzeGoSingleLetter(filePaths)) {
                     if (allow.has(hit.name) || isGoIdiom(hit, idioms) || (kindFilter !== 'all' && hit.kind !== kindFilter)) continue;
                     if (!checkAll) {
-                        if (!addedByFile.has(hit.file)) addedByFile.set(hit.file, addedLines(hit.file));
+                        if (!addedByFile.has(hit.file)) addedByFile.set(hit.file, addedLines(hit.file, options.scope));
                         if (!addedByFile.get(hit.file)?.has(hit.line)) continue;
                     }
                     results.push(hit);

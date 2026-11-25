@@ -14,7 +14,11 @@ const BOTH: readonly Lang[] = ['ts', 'go'];
 const RULES: Rule[] = [
     {
         langs: BOTH,
-        text: '**Comments** — only for unexpected/non-obvious behaviour (platform quirks, deliberate-looking-wrong guards, layout hacks). Terse lowercase fragments, no trailing period, ~1 line. Never restate the next line, never describe the change process, tasks or plans, and never mention plan or knowledge files (`*.md`). No `// ---` / `// ===` rulers. Applies to doc comments too.',
+        text: '**Comments** — only for unexpected/non-obvious behaviour (platform quirks, deliberate-looking-wrong guards, layout hacks). Terse lowercase fragments, no trailing period, ~1 line; up to 3 when the behaviour is non-trivial (concurrency, an invariant, a deliberate trade-off) and one line would leave the reader guessing. Never restate the next line, never describe the change process, tasks or plans, and never mention plan or knowledge files (`*.md`). No `// ---` / `// ===` rulers. Applies to doc comments too.',
+    },
+    {
+        langs: BOTH,
+        text: '**Comments stay true** — a change that alters what a comment describes updates or deletes that comment in the same change. Re-read the comments on and above every line you change, a trailing one included.',
     },
     {
         langs: BOTH,
@@ -26,7 +30,7 @@ const RULES: Rule[] = [
     },
     {
         langs: BOTH,
-        text: '**Docs** — update the matching doc in the same commit as the code. Docs describe the current code only — no history, no "now/previously", no changelogs; state the reasoning only when a design would look wrong without it. Delete what is no longer true.',
+        text: '**Docs** — update the matching doc in the same commit as the code. Docs describe the current code only — no history, no "now/previously/no longer", no plan phases, no changelogs; state the reasoning only when a design would look wrong without it. Delete what is no longer true.',
     },
     {
         langs: BOTH,
@@ -74,7 +78,7 @@ const RULES: Rule[] = [
     },
     {
         langs: ['go'],
-        text: '**`go fix` clean** — `go fix -diff ./...` reports no patch before a change is done; apply its modernizations with `go fix ./...`.',
+        text: "**Lint clean** — `gofmt -l .` lists nothing and the project's Go lint passes before a change is done (its `lint:go` or `lint` task, else `go vet ./...` and `go fix -diff ./...`); fix what it reports, and apply `go fix` modernizations with `go fix ./...`.",
     },
     {
         langs: ['go'],
@@ -82,7 +86,7 @@ const RULES: Rule[] = [
     },
     {
         langs: ['go'],
-        text: '**No long declarations in `if`** — an init statement stays short and on one line (`if err := f(); err != nil` is fine). When the declaration is long or spans several lines, declare it on the line before and keep the `if` to its condition.',
+        text: '**No long declarations in `if`** — an init statement stays short and on one line (`if err := f(x); err != nil` is fine at any length while it declares only `err`). When the declaration is long or spans several lines, declare it on the line before and keep the `if` to its condition.',
     },
 ];
 

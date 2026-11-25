@@ -1,14 +1,13 @@
 import type { Command, FlagSpec, Options } from './types.ts';
 
-// shared by every check that can narrow itself to in-flight work — one spec object so `all` gives the
+// shared by every check that can narrow itself to changed lines — one spec object so `all` gives the
 // subcommands the same value instead of two conflicting --scope defaults
 export const SCOPE_FLAG: FlagSpec = {
-    flag: '--scope=uncommitted|all',
+    flag: '--scope=uncommitted|all|<rev>',
     key: 'scope',
-    kind: 'enum',
-    values: ['uncommitted', 'all'],
+    kind: 'string',
     default: 'uncommitted',
-    desc: 'which lines to check: those added/modified since HEAD, or everything',
+    desc: 'which lines to check: those added/modified since HEAD, everything, or those changed since a git revision (a commit range under review, plus the working tree)',
 };
 
 // shared by every check with a Go-side implementation — one spec object so `all` doesn't see two
@@ -30,8 +29,8 @@ export const INCLUDE_EXPORTED_FLAG: FlagSpec = {
     desc: 'also flag exported bindings (callers outside the scanned paths are invisible)',
 };
 
-// a flag spec is { flag, key, kind: 'boolean'|'number'|'enum'|'list', values?, default?, desc }
-// `flag` is the display form ('--max-lines=N'); everything before the '=' is the matched name.
+// a flag spec is { flag, key, kind: 'boolean'|'number'|'string'|'enum'|'list', values?, default?, desc }
+// `flag` is the display form ('--max-lines=N'), everything before the '=' is the matched name
 
 function flagName(spec: FlagSpec): string {
     return spec.flag.split('=')[0]!;
@@ -64,6 +63,8 @@ export function parseFlags(argv: string[], specs: FlagSpec[]): { paths: string[]
                 options[spec.key] = n;
             } else if (spec.kind === 'enum') {
                 if (!spec.values?.includes(raw)) throw new Error(`${name} must be one of ${spec.values?.join('|')}, got '${raw}'`);
+                options[spec.key] = raw;
+            } else if (spec.kind === 'string') {
                 options[spec.key] = raw;
             } else {
                 (options[spec.key] as string[]).push(raw);

@@ -5,6 +5,7 @@
 import casts from './commands/casts.ts';
 import comments from './commands/comments.ts';
 import deadCode from './commands/dead-code.ts';
+import docs from './commands/docs.ts';
 import explicitImport from './commands/explicit-import.ts';
 import ifInit from './commands/if-init.ts';
 import inline from './commands/inline.ts';
@@ -12,15 +13,17 @@ import lint from './commands/lint.ts';
 import multiAssign from './commands/multi-assign.ts';
 import rules from './commands/rules.ts';
 import singleLetter from './commands/single-letter.ts';
+import staleComments from './commands/stale-comments.ts';
 import typeLookup from './commands/type-lookup.ts';
 import vuln from './commands/vuln.ts';
-import { helpText, parseFlags } from './lib/args.ts';
+import { helpText, LANG_FLAG, parseFlags } from './lib/args.ts';
 import { detectLang } from './lib/detect-lang.ts';
+import { verifyRevision } from './lib/git.ts';
 import { resolveGoFiles } from './lib/go-project.ts';
 import { eachProject, resolveTsConfigs } from './lib/project.ts';
 import type { Command, FlagSpec } from './lib/types.ts';
 
-const COMMANDS: Command[] = [inline, comments, casts, typeLookup, explicitImport, singleLetter, ifInit, multiAssign, deadCode, lint, vuln];
+const COMMANDS: Command[] = [inline, comments, staleComments, casts, typeLookup, explicitImport, singleLetter, ifInit, multiAssign, deadCode, lint, vuln];
 
 // two commands may share a flag only by sharing the one spec object (SCOPE_FLAG) — same name, two specs would
 // silently give `all` one command's parsing for both
@@ -50,7 +53,7 @@ Takes the union of the subcommands' flags; each one means what it means there.`,
 };
 
 function usage(): string {
-    const commands = [...COMMANDS, ALL, rules];
+    const commands = [...COMMANDS, ALL, docs, rules];
     const width = Math.max(...commands.map(c => c.name.length));
     return [
         'code-rules — local-only checks for lumaric-erp AGENTS.md style rules',
@@ -71,7 +74,7 @@ function usage(): string {
 function run(): void {
     const argv = process.argv.slice(2);
     const commandName = argv[0];
-    const command = [...COMMANDS, ALL, rules].find(c => c.name === commandName);
+    const command = [...COMMANDS, ALL, docs, rules].find(candidate => candidate.name === commandName);
     if (!command) {
         console.log(usage());
         process.exit(commandName === undefined || commandName === '--help' || commandName === '-h' ? 0 : 1);
@@ -90,9 +93,14 @@ function run(): void {
         console.error((e as Error).message);
         process.exit(1);
     }
+    const revisionError = verifyRevision(options.scope, paths);
+    if (revisionError) {
+        console.error(revisionError);
+        process.exit(1);
+    }
     if (command.run) {
-        if (options.lang === undefined && paths.length > 0) options.lang = detectLang(paths);
-        command.run(options);
+        if (options.lang === undefined && paths.length > 0 && command.flags.includes(LANG_FLAG)) options.lang = detectLang(paths);
+        command.run(options, paths);
         return;
     }
     if (paths.length === 0) {

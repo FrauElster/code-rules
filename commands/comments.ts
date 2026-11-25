@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { type SourceFile, ts } from 'ts-morph';
 import { LANG_FLAG, SCOPE_FLAG } from '../lib/args.ts';
-import { addedLines } from '../lib/git.ts';
+import { addedLines, scopeLabel } from '../lib/git.ts';
 import { goCommentBlocks } from '../lib/go-comments.ts';
 import type { Command, Options } from '../lib/types.ts';
 
@@ -13,7 +13,7 @@ interface TsCommentBlock {
 // groups `//` lines that are truly adjacent (consecutive source lines, nothing but trivia between them) into one
 // logical comment, since that's what the "hard cap ~1 line" comment-style rule treats as a single unit; a blank
 // line between two `//` comments makes them two separate comments, not one. `/* */` is always one unit.
-function commentBlocks(sourceFile: SourceFile): TsCommentBlock[] {
+export function commentBlocks(sourceFile: SourceFile): TsCommentBlock[] {
     const fullText = sourceFile.getFullText();
     const compilerFile = sourceFile.compilerNode;
     const lineAt = (pos: number) => sourceFile.getLineAndColumnAtPos(pos).line;
@@ -92,7 +92,16 @@ function mdHint(raw: string): string[] {
     return match ? [`mentions ${match[0]}`] : [];
 }
 
-function proseHints(raw: string): string[] {
+// changelog wording: a comment or doc describes the code as it is, not how it got there or which plan step made it
+// ("no longer" and a bare "used to" read just as often as the current state: a field no longer context aware, a map used to dedup)
+export const HISTORY = /\b(previously|used to be|was (?:changed|replaced|removed|renamed)|phase \d+)\b/i;
+
+function historyHint(text: string): string[] {
+    const match = HISTORY.exec(text);
+    return match ? [`history wording '${match[0]}'`] : [];
+}
+
+function proseHints(raw: string, multiLine: boolean): string[] {
     const lines = raw
         .split('\n')
         .map(line =>
@@ -108,11 +117,12 @@ function proseHints(raw: string): string[] {
     const hints: string[] = [];
     const trailing = /[.!?;]$/.exec(text);
     if (trailing) hints.push(`trailing '${trailing[0]}'`);
-    if (/[.!?;]\s+\S/.test(text)) hints.push('sentence break');
+    // an explanation that needs several lines may need several statements too
+    if (!multiLine && /[.!?;]\s+\S/.test(text)) hints.push('sentence break');
     return hints;
 }
 
-function collect(results: CommentResult[], file: string, added: Set<number> | null, block: { startLine: number; endLine: number; text: string }): void {
+function collect(results: CommentResult[], file: string, added: Set<number> | null, maxLines: number, block: { startLine: number; endLine: number; text: string }): void {
     const { startLine, endLine } = block;
     if (added) {
         let overlapsAdded = false;
@@ -124,14 +134,15 @@ function collect(results: CommentResult[], file: string, added: Set<number> | nu
         }
         if (!overlapsAdded) return;
     }
-    const hints = [...proseHints(block.text), ...mdHint(block.text)];
-    if (endLine > startLine) hints.unshift(`${endLine - startLine + 1}l comment`);
+    const lines = endLine - startLine + 1;
+    const hints = [...proseHints(block.text, lines > 1), ...mdHint(block.text), ...historyHint(block.text)];
+    if (lines > maxLines) hints.unshift(`${lines}l comment`);
     if (hints.length > 0) results.push({ file, startLine, endLine, hints });
 }
 
-function reportBlocks(results: CommentResult[], checkAll: boolean): void {
+function reportBlocks(results: CommentResult[], scope: Options['scope']): void {
     results.sort((a, b) => a.file.localeCompare(b.file) || a.startLine - b.startLine);
-    console.log(`multi-line or prose comments in ${checkAll ? 'the whole project' : 'uncommitted lines'}:`);
+    console.log(`long or prose comments in ${scopeLabel(scope)}:`);
     for (const r of results) {
         const range = r.endLine > r.startLine ? `${r.startLine}-${r.endLine}` : `${r.startLine}`;
         console.log(`${r.file}:${range}  (${r.hints.join(', ')})`);
@@ -141,17 +152,21 @@ function reportBlocks(results: CommentResult[], checkAll: boolean): void {
 
 const comments: Command = {
     name: 'comments',
-    summary: 'multi-line or prose-punctuated comments (~1 line fragment rule)',
-    flags: [SCOPE_FLAG, LANG_FLAG],
+    summary: 'long or prose-punctuated comments, plan/knowledge references and history wording',
+    flags: [SCOPE_FLAG, LANG_FLAG, { flag: '--max-comment-lines=N', key: 'maxCommentLines', kind: 'number', default: 3, desc: 'longest comment left alone, in lines' }],
     help: `
 Flags every comment (a /* */ block, or a run of adjacent // lines treated as one
-logical comment) that spans more than one physical line or reads like prose
-instead of a terse fragment, per the "terse lowercase fragments, no trailing
-period, ~1 line" comment rule. Prose hints:
+logical comment) longer than --max-comment-lines, or that reads like prose instead of
+a terse fragment, per the "terse lowercase fragments, no trailing period, ~1
+line, up to 3 for non-trivial behaviour" comment rule. Whether a 2-3 line
+comment explains something non-trivial is a judgment call the check leaves to
+you. Prose hints:
   trailing '.'      ends like a sentence (also '!', '?', ';')
-  sentence break    . ! ? or ; followed by more text mid-comment
+  sentence break    . ! ? or ; followed by more text in a one-line comment
 Separately, a comment that names a *.md file (PLAN.md, docs/notes.md) gets a
-"mentions X.md" hint: plans and knowledge files don't belong in comments.
+"mentions X.md" hint: plans and knowledge files don't belong in comments; and
+one with changelog wording ("previously", "used to be", "was changed/replaced/
+removed/renamed", "phase N") a "history wording" hint.
 Code spans, URLs, e.g./i.e./etc./vs., ellipses and tool directives (eslint-,
 biome-ignore, @ts-, go:, nolint, ...) never count as prose.
 
@@ -184,14 +199,14 @@ JSDoc-style API docs on an exported symbol are a legitimate reason to keep one.`
                     const blocks = goCommentBlocks(text);
                     if (blocks.length === 0) continue;
 
-                    const added = checkAll ? null : addedLines(filePath);
+                    const added = checkAll ? null : addedLines(filePath, options.scope);
                     if (!checkAll && (added === null || added.size === 0)) continue;
 
-                    for (const b of blocks) collect(results, filePath, added, { ...b, text: text.slice(b.pos, b.end) });
+                    for (const block of blocks) collect(results, filePath, added, options.maxCommentLines as number, { ...block, text: text.slice(block.pos, block.end) });
                 }
             },
             report() {
-                reportBlocks(results, checkAll);
+                reportBlocks(results, options.scope);
             },
         };
     },
@@ -206,12 +221,12 @@ JSDoc-style API docs on an exported symbol are a legitimate reason to keep one.`
                     const blocks = commentBlocks(sourceFile);
                     if (blocks.length === 0) continue;
 
-                    const added = checkAll ? null : addedLines(filePath);
+                    const added = checkAll ? null : addedLines(filePath, options.scope);
                     if (!checkAll && (added === null || added.size === 0)) continue;
 
                     const fullText = sourceFile.getFullText();
                     for (const b of blocks) {
-                        collect(results, filePath, added, {
+                        collect(results, filePath, added, options.maxCommentLines as number, {
                             startLine: sourceFile.getLineAndColumnAtPos(b.pos).line,
                             endLine: sourceFile.getLineAndColumnAtPos(b.end - 1).line,
                             text: fullText.slice(b.pos, b.end),
@@ -220,7 +235,7 @@ JSDoc-style API docs on an exported symbol are a legitimate reason to keep one.`
                 }
             },
             report() {
-                reportBlocks(results, checkAll);
+                reportBlocks(results, options.scope);
             },
         };
     },

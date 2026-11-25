@@ -5,7 +5,7 @@ export type FlagValue = boolean | number | string | string[];
 export interface FlagSpec {
     flag: string;
     key: string;
-    kind: 'boolean' | 'number' | 'enum' | 'list';
+    kind: 'boolean' | 'number' | 'string' | 'enum' | 'list';
     values?: readonly string[];
     default?: FlagValue;
     desc: string;
@@ -35,6 +35,6 @@ export interface Command {
     // a check that shells out to the project's own tooling — gets the resolved tsconfigs or .go files,
     // never the ts-morph graph, and serves both langs (options.lang says which)
     createTool?(options: Options): Runner<string[]>;
-    // a command that needs no project graph at all (and no path)
-    run?(options: Options): void;
+    // a command that needs no project graph: gets the paths as given, if any
+    run?(options: Options, paths: string[]): void;
 }

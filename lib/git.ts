@@ -1,9 +1,44 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import type { FlagValue } from './types.ts';
 
-// lines added/modified since HEAD (staged + unstaged) — untracked files count as fully added
-export function addedLines(filePath: string): Set<number> | null {
+export interface Hunk {
+    // first line of the hunk in the current file, for a pure deletion the line the removed text sat before
+    start: number;
+    count: number;
+    removed: string[];
+}
+
+// `--scope=uncommitted` diffs against HEAD, any other value but `all` is the revision to diff against; the working
+// tree is the newer side either way, so in-flight edits count too
+function diffBase(scope: FlagValue | undefined): string {
+    return scope === undefined || scope === 'uncommitted' ? 'HEAD' : String(scope);
+}
+
+export function scopeLabel(scope: FlagValue | undefined): string {
+    if (scope === 'all') return 'the whole project';
+    if (scope === undefined || scope === 'uncommitted') return 'uncommitted lines';
+    return `lines changed since ${scope}`;
+}
+
+// a mistyped revision would make every file look unchanged and every check report nothing
+export function verifyRevision(scope: FlagValue | undefined, paths: string[]): string | null {
+    if (scope === undefined || scope === 'all' || scope === 'uncommitted') return null;
+    for (const path of paths) {
+        try {
+            execFileSync('git', ['rev-parse', '--verify', '--quiet', `${scope}^{commit}`], { cwd: existsSync(path) && statSync(path).isDirectory() ? path : dirname(path), stdio: 'ignore' });
+        } catch {
+            return `--scope=${scope}: not a revision in the repository of ${path}`;
+        }
+    }
+    return null;
+}
+
+// hunks of the file's diff against the scope's base, an untracked file as one hunk of added lines
+export function diffHunks(path: string, scope: FlagValue | undefined): Hunk[] | null {
+    // git runs in the file's directory, a relative path would be resolved against it a second time
+    const filePath = resolve(path);
     const cwd = dirname(filePath);
     let status: string;
     try {
@@ -11,24 +46,31 @@ export function addedLines(filePath: string): Set<number> | null {
     } catch {
         return null;
     }
-    if (status.startsWith('??')) {
-        const lineCount = readFileSync(filePath, 'utf8').split('\n').length;
-        return new Set(Array.from({ length: lineCount }, (_, i) => i + 1));
-    }
+    if (status.startsWith('??')) return [{ start: 1, count: readFileSync(filePath, 'utf8').split('\n').length, removed: [] }];
     let diff: string;
     try {
-        diff = execFileSync('git', ['diff', '--no-color', '-U0', 'HEAD', '--', filePath], { cwd, encoding: 'utf8' });
+        diff = execFileSync('git', ['diff', '--no-color', '-U0', diffBase(scope), '--', filePath], { cwd, encoding: 'utf8' });
     } catch {
         return null;
     }
-    const added = new Set<number>();
+    const hunks: Hunk[] = [];
     for (const line of diff.split('\n')) {
-        const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
-        if (!hunk) continue;
-        const start = Number(hunk[1]);
-        const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
-        for (let i = 0; i < count; i++) added.add(start + i);
+        const header = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+        if (header) {
+            const count = header[2] === undefined ? 1 : Number(header[2]);
+            // git numbers a pure deletion by the line before it
+            hunks.push({ start: Number(header[1]) + (count === 0 ? 1 : 0), count, removed: [] });
+        } else if (line.startsWith('-') && !line.startsWith('---')) hunks.at(-1)?.removed.push(line.slice(1));
     }
+    return hunks;
+}
+
+// lines added/modified since the scope's base (staged + unstaged) — untracked files count as fully added
+export function addedLines(filePath: string, scope: FlagValue | undefined): Set<number> | null {
+    const hunks = diffHunks(filePath, scope);
+    if (!hunks) return null;
+    const added = new Set<number>();
+    for (const hunk of hunks) for (let offset = 0; offset < hunk.count; offset++) added.add(hunk.start + offset);
     return added;
 }
 

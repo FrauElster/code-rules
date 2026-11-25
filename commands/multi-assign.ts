@@ -1,6 +1,6 @@
 import { Node, type SourceFile, SyntaxKind } from 'ts-morph';
 import { LANG_FLAG, SCOPE_FLAG } from '../lib/args.ts';
-import { addedLines, touchesAdded } from '../lib/git.ts';
+import { addedLines, scopeLabel, touchesAdded } from '../lib/git.ts';
 import { analyzeGoMultiAssign, type GoSpanCandidate } from '../lib/go-analyzer.ts';
 import type { Command, Options } from '../lib/types.ts';
 
@@ -33,9 +33,9 @@ function* candidatesInFile(sourceFile: SourceFile): Generator<Node> {
     }
 }
 
-function report(results: GoSpanCandidate[], checkAll: boolean): void {
+function report(results: GoSpanCandidate[], scope: Options['scope']): void {
     results.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
-    console.log(`multiple assignments in one statement in ${checkAll ? 'the whole project' : 'uncommitted lines'}:`);
+    console.log(`multiple assignments in one statement in ${scopeLabel(scope)}:`);
     for (const hit of results) {
         if (hit.endLine === hit.line) console.log(`${hit.file}:${hit.line}  ${hit.text}`);
         else console.log(`${hit.file}:${hit.line}-${hit.endLine}  ${hit.text.split('\n')[0]} …`);
@@ -78,7 +78,7 @@ Output:
             visit({ sourceFiles }) {
                 for (const sourceFile of sourceFiles) {
                     const file = sourceFile.getFilePath();
-                    const added = checkAll ? null : addedLines(file);
+                    const added = checkAll ? null : addedLines(file, options.scope);
                     if (!checkAll && (added === null || added.size === 0)) continue;
                     for (const node of candidatesInFile(sourceFile)) {
                         const line = node.getStartLineNumber();
@@ -88,7 +88,7 @@ Output:
                     }
                 }
             },
-            report: () => report(results, checkAll),
+            report: () => report(results, options.scope),
         };
     },
 
@@ -100,13 +100,13 @@ Output:
                 const addedByFile = new Map<string, Set<number> | null>();
                 for (const candidate of analyzeGoMultiAssign(filePaths)) {
                     if (!checkAll) {
-                        if (!addedByFile.has(candidate.file)) addedByFile.set(candidate.file, addedLines(candidate.file));
+                        if (!addedByFile.has(candidate.file)) addedByFile.set(candidate.file, addedLines(candidate.file, options.scope));
                         if (!touchesAdded(addedByFile.get(candidate.file), candidate.line, candidate.endLine)) continue;
                     }
                     results.push(candidate);
                 }
             },
-            report: () => report(results, checkAll),
+            report: () => report(results, options.scope),
         };
     },
 };

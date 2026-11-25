@@ -115,7 +115,7 @@ Output:
                     const nodes = [...sourceFile.getDescendantsOfKind(SyntaxKind.AsExpression), ...sourceFile.getDescendantsOfKind(SyntaxKind.TypeAssertionExpression)];
                     if (nodes.length === 0) continue;
 
-                    const added = checkAll ? null : addedLines(filePath);
+                    const added = checkAll ? null : addedLines(filePath, options.scope);
                     if (!checkAll && (added === null || added.size === 0)) continue;
 
                     for (const node of nodes) {
